@@ -177,8 +177,22 @@ function useBackupData(summaryTable, holdingsTable) {
 function updateTimestamp(isLive) {
     const lastUpdated = document.getElementById('last-updated');
     const now = new Date();
-    const status = isLive ? "(실시간 🟢)" : "(백업모드 🟠)";
-    lastUpdated.innerHTML = `마지막 업데이트: ${now.toLocaleString()} ${status}`;
+    
+    // YYYY-MM-DD HH:MM:SS 포맷팅
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    
+    const formattedTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    
+    if (isLive) {
+        lastUpdated.innerHTML = `Last Update: ${formattedTime} (Live)`;
+    } else {
+        lastUpdated.innerHTML = `Last Update: ${formattedTime} (Backup)`;
+    }
 }
 
 // ------------------- Summary Logic -------------------
