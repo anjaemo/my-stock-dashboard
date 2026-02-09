@@ -1,5 +1,5 @@
 // 🐶 바둑이의 주식 데이터 처리 스크립트
-// 업데이트: 2026-02-09 (일일 변동량/변동률 추가 + 캐시 방지)
+// 업데이트: 2026-02-09 (데이터 최신화 및 캐시 방지 강화)
 
 const CONFIG = {
     summaryURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=0&single=true&output=csv",
@@ -7,46 +7,47 @@ const CONFIG = {
     historyURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=1713255630&single=true&output=csv"
 };
 
-// ⚠️ 브라우저 보안(CORS) 대비 백업 데이터
+// ⚠️ 브라우저 보안(CORS) 대비 백업 데이터 (2026-02-09 최신화)
 const BACKUP_DATA = {
-    summary: `,총 평가금,총 투자금,총 수입액,평가/원금,일 변화율,일 변화액,국내 1일 변화율,국내 1일 변화액,국외 1일 변화율,국외 1일 변화액,배당금,,,
-AJM,"414,511,777","250,683,881","163,827,896",165.35%,0.62%,"2,573,238",-1.11%,"-1,635,890",1.59%,"4,209,128","24,781,805",,,
-AJM jr,"11,388,075","9,600,000","1,788,075",118.63%,-1.42%,"-163,834",-1.54%,"-174,900",5.18%,"11,066","155,121",,,
-JJG-w-AJM,"34,419,097","60,000,000","-25,580,903",57.37%,1.87%,"632,018",-0.88%,"-63,360",2.62%,"695,378","160,166",,,
-JJG-w-KKO,"131,720,394","116,658,793","15,061,601",112.91%,2.03%,"2,619,499",-,0,2.03%,"2,619,499","625,326",,,
-JJG-w-AJMjr,"102,257,678","91,270,000","10,987,678",112.04%,-0.44%,"-448,555",-1.43%,"-1,045,785",2.02%,"597,230","394,047",,,
-JJG-w-AJM-ISA,"41,564,860","39,757,337","1,807,523",104.55%,-0.81%,"-340,965",-0.81%,"-340,965",-,0,0,,,
-JJG-w-KKO-ISA,"29,630,485","30,798,208","-1,167,723",96.21%,-2.07%,"-626,310",-2.07%,"-626,310",-,0,"75,380",1년 예상 배당금,환율,
-합계,"765,492,366","598,768,219","166,724,147",127.84%,0.55%,"4,245,092",-1.26%,"-3,887,210",1.78%,"8,132,302","26,191,846","10,086,718","1,463.8",
-달러 합산,"457,456,866",59.76%,,,,,,,,,,,,`,
+    summary: `,총 평가금,총 투자금,총 수입액,수익률,일 변화율,일 변화액,국내 1일 변화율,국내 1일 변화액,국외 1일 변화율,국외 1일 변화액,배당금,,,
+AJM,"417,509,479","250,683,881","166,825,598",66.55%,1.77%,"7,253,710",2.08%,"3,045,330",1.59%,"4,208,380","24,781,805",,,
+AJM jr,"11,627,085","9,600,000","2,027,085",21.12%,2.20%,"250,114",2.14%,"239,050",5.18%,"11,064","155,121",,,
+JJG-w-AJM,"34,703,997","60,000,000","-25,296,003",-42.16%,2.92%,"984,995",4.04%,"289,740",2.62%,"695,255","160,166",,,
+JJG-w-KKO,"131,696,998","116,658,793","15,038,205",12.89%,2.03%,"2,619,034",-,0,2.03%,"2,619,034","625,326",,,
+JJG-w-AJMjr,"103,679,479","91,270,000","12,409,479",13.60%,1.99%,"2,024,274",1.98%,"1,427,150",2.02%,"597,124","394,047",,,
+JJG-w-AJM-ISA,"42,868,070","39,757,337","3,110,733",7.82%,1.18%,"498,280",1.18%,"498,280",-,0,0,,,
+JJG-w-KKO-ISA,"30,402,105","30,798,208","-396,103",-1.29%,2.60%,"771,620",2.60%,"771,620",-,0,"75,380",1년 예상 배당금,환율,
+합계,"772,487,213","598,768,219","173,718,994",29.01%,1.86%,"14,402,027",1.99%,"6,271,170",1.78%,"8,130,857","26,191,846","10,087,616","1,464.0",
+달러 합산,"457,519,369",59.22%,,,,,,,,,,,,
+원화 합산,"315,052,400",40.78%,,,,,,,,,,,,`,
 
-    holdings: `종목명,Ticker,화폐단위,총 수량,"총 매수금액\n(현지통화)","평균단가\n(현지통화)","현재가\n(현지통화)","수익률\n(%)","평가금액\n(원)",비중(%),"일간 변동율\n(%)","일간 변동액\n(현지통화)","일간 변동액\n(원)","총 매수금액\n(원)","수익액\n(원)",환율,1463.8,
+    holdings: `종목명,Ticker,화폐단위,총 수량,"총 매수금액\n(현지통화)","평균단가\n(현지통화)","현재가\n(현지통화)","수익률\n(%)","평가금액\n(원)",비중(%),"일간 변동율\n(%)","일간 변동액\n(현지통화)","일간 변동액\n(원)","총 매수금액\n(원)","수익액\n(원)",환율,1464.0,
 하나금융지주,KRX:086790,KRW,1,"60,491",60491.25,"114,600.00",89.45,"114,600",0.01,0.44,500.00,500,"60,491","54,109",,,
-RKLB,NASDAQ:RKLB,USD,96,"3,879",40.41,72.32,78.98,"10,162,754",1.33,9.05,6.00,"8,783","5,678,136","4,484,618",합산,"765,492,366",
-TSLA,NASDAQ:TSLA,USD,29,"6,823",235.26,411.11,74.74,"17,451,702",2.28,3.50,13.90,"20,347","9,987,034","7,464,668",달러 합산,"457,456,866",59.76%
-ABBV,NYSE:ABBV,USD,52,"6,807",130.91,223.43,70.68,"17,006,955",2.22,2.01,4.41,"6,455","9,964,219","7,042,737",원화 합산,"308,035,500",40.24%
-VOO,NYSEARCA:VOO,USD,22,"8,767",398.49,635.24,59.41,"20,457,015",2.67,1.95,12.14,"17,771","12,832,953","7,624,062",,,
+RKLB,NASDAQ:RKLB,USD,96,"3,879",40.41,72.32,78.98,"10,164,142",1.32,9.05,6.00,"8,784","5,678,912","4,485,230",합산,"772,487,213",
+TSLA,NASDAQ:TSLA,USD,29,"6,823",235.26,411.11,74.74,"17,454,087",2.26,3.50,13.90,"20,350","9,988,399","7,465,688",달러 합산,"457,519,369",59.22%
+ABBV,NYSE:ABBV,USD,52,"6,807",130.91,223.43,70.68,"17,009,280",2.20,2.01,4.41,"6,456","9,965,581","7,043,700",원화 합산,"315,052,400",40.78%
+VOO,NYSEARCA:VOO,USD,22,"8,767",398.49,635.24,59.41,"20,459,811",2.65,1.95,12.14,"17,773","12,834,707","7,625,104",,,
 현대차2우B,KRX:005387,KRW,1,"156,578",156577.56,"249,500.00",59.35,"249,500",0.03,-2.92,"-7,500.00","-7,500","156,578","92,922",,,
-JNJ,NYSE:JNJ,USD,61,"10,064",164.99,239.99,45.46,"21,429,139",2.80,0.93,2.20,"3,220","14,732,049","6,697,090",수익률,,
-T_NASDAQ(ETF),KRX:133690,KRW,245,"28,990,860",118330.04,"159,425.00",34.73,"39,059,125",5.10,-1.67,"-2,700.00","-2,700","28,990,860","10,068,265",,,8
-MO,NYSE:MO,USD,177,"8,594",48.55,65.40,34.70,"16,944,656",2.21,0.02,0.01,15,"12,579,941","4,364,715",,,
-DGRO,NYSEARCA:DGRO,USD,265,"14,980",56.53,73.95,30.82,"28,685,723",3.75,1.78,1.29,"1,888","21,928,227","6,757,495",,,
-AAPL,NASDAQ:AAPL,USD,55,"12,094",219.89,278.12,26.48,"22,391,163",2.93,0.80,2.21,"3,235","17,703,150","4,688,013",,,
-T_S&P500(ETF),KRX:360750,KRW,2045,"41,117,680",20106.44,"24,750.00",23.09,"50,613,750",6.61,-1.20,-300.00,-300,"41,117,680","9,496,070",,,
-SCHD,NYSEARCA:SCHD,USD,538,"13,892",25.82,31.47,21.87,"24,783,393",3.24,1.61,0.50,732,"20,335,565","4,447,828",,,
-S_SCHD(ETF),KRX:446720,KRW,2906,"32,061,970",11033.02,"13,275.00",20.32,"38,577,150",5.04,0.30,40.00,40,"32,061,970","6,515,180",,,
-NEE,NYSE:NEE,USD,86,"6,414",74.58,89.47,19.97,"11,263,092",1.47,0.29,0.26,381,"9,388,169","1,874,923",,,
-O,NYSE:O,USD,370,"19,584",52.93,63.23,19.46,"34,245,747",4.47,-0.21,-0.13,-190,"28,666,389","5,579,358",,,
-PLUS50(ETF),KRX:122090 ,KRW,594,"28,925,995",48696.96,"54,320.00",11.55,"32,266,080",4.22,-0.88,-480.00,-480,"28,925,995","3,340,085",,,
-K_S&P500(ETF),KRX:379800,KRW,2452,"51,030,120",20811.63,"22,605.00",8.62,"55,427,460",7.24,-1.25,-285.00,-285,"51,030,120","4,397,340",,,
-QQQM,NASDAQ:QQQM,USD,268,"63,085",235.39,251.01,6.63,"98,470,821",12.86,2.11,5.18,"7,582","92,344,403","6,126,418",,,
-SPYM,NYSEARCA:SPYM,USD,863,"66,006",76.48,81.27,6.26,"102,665,091",13.41,1.96,1.56,"2,284","96,619,662","6,045,429",,,
-K_NASDAQ(ETF),KRX:379810,KRW,2299,"52,723,430",22933.20,"23,885.00",4.15,"54,911,615",7.17,-1.63,-395.00,-395,"52,723,430","2,188,185",,,
-NVIDIA,NASDAQ:NVDA,USD,31,"5,751",185.53,185.41,-0.07,"8,413,498",1.10,7.92,13.60,"19,908","8,419,018","-5,521",,,
-K_AI테크(ETF),KRX:485540,KRW,2306,"32,236,920",13979.58,"13,910.00",-0.50,"32,076,460",4.19,-2.52,-360.00,-360,"32,236,920","-160,460",,,
-GOOGLE,GOOGL,USD,34,"11,041",324.74,322.86,-0.58,"16,068,484",2.10,-2.53,-8.39,"-12,281","16,161,962","-93,478",,,
-AMD,NASDAQ:AMD,USD,23,"5,098",221.64,208.44,-5.95,"7,017,633",0.92,8.28,15.94,"23,333","7,461,947","-444,314",,,
-S_KDQ150(ETF),KRX:450910,KRW,261,"5,172,275",19817.15,"18,160.00",-8.36,"4,739,760",0.62,-3.38,-635.00,-635,"5,172,275","-432,515",,,`,
+JNJ,NYSE:JNJ,USD,61,"10,064",164.99,239.99,45.46,"21,432,068",2.77,0.93,2.20,"3,221","14,734,062","6,698,006",수익률,,
+T_NASDAQ(ETF),KRX:133690,KRW,245,"28,990,860",118330.04,"159,425.00",34.73,"39,059,125",5.06,-1.67,"-2,700.00","-2,700","28,990,860","10,068,265",,,8
+MO,NYSE:MO,USD,177,"8,594",48.55,65.40,34.70,"16,946,972",2.19,0.02,0.01,15,"12,581,660","4,365,312",,,
+DGRO,NYSEARCA:DGRO,USD,265,"14,980",56.53,73.95,30.82,"28,689,644",3.71,1.78,1.29,"1,889","21,931,224","6,758,419",,,
+AAPL,NASDAQ:AAPL,USD,55,"12,094",219.89,278.12,26.48,"22,394,224",2.90,0.80,2.21,"3,235","17,705,570","4,688,654",,,
+T_S&P500(ETF),KRX:360750,KRW,2045,"41,117,680",20106.44,"24,750.00",23.09,"50,613,750",6.55,-1.20,-300.00,-300,"41,117,680","9,496,070",,,
+SCHD,NYSEARCA:SCHD,USD,538,"13,892",25.82,31.47,21.87,"24,786,781",3.21,1.61,0.50,732,"20,338,345","4,448,436",,,
+S_SCHD(ETF),KRX:446720,KRW,2906,"32,061,970",11033.02,"13,275.00",20.32,"38,577,150",4.99,0.30,40.00,40,"32,061,970","6,515,180",,,
+NEE,NYSE:NEE,USD,86,"6,414",74.58,89.47,19.97,"11,264,631",1.46,0.29,0.26,381,"9,389,453","1,875,179",,,
+O,NYSE:O,USD,370,"19,584",52.93,63.23,19.46,"34,250,428",4.43,-0.21,-0.13,-190,"28,670,307","5,580,121",,,
+PLUS50(ETF),KRX:122090 ,KRW,594,"28,925,995",48696.96,"54,320.00",11.55,"32,266,080",4.18,-0.88,-480.00,-480,"28,925,995","3,340,085",,,
+K_S&P500(ETF),KRX:379800,KRW,2452,"51,030,120",20811.63,"22,605.00",8.62,"55,427,460",7.18,-1.25,-285.00,-285,"51,030,120","4,397,340",,,
+QQQM,NASDAQ:QQQM,USD,268,"63,085",235.39,251.01,6.63,"98,484,281",12.75,2.11,5.18,"7,584","92,357,026","6,127,255",,,
+SPYM,NYSEARCA:SPYM,USD,863,"66,006",76.48,81.27,6.26,"102,679,124",13.29,1.96,1.56,"2,284","96,632,869","6,046,255",,,
+K_NASDAQ(ETF),KRX:379810,KRW,2299,"52,723,430",22933.20,"23,885.00",4.15,"54,911,615",7.11,-1.63,-395.00,-395,"52,723,430","2,188,185",,,
+NVIDIA,NASDAQ:NVDA,USD,31,"5,751",185.53,185.41,-0.07,"8,414,648",1.09,7.92,13.60,"19,910","8,420,169","-5,521",,,
+K_AI테크(ETF),KRX:485540,KRW,2306,"32,236,920",13979.58,"13,910.00",-0.50,"32,076,460",4.15,-2.52,-360.00,-360,"32,236,920","-160,460",,,
+GOOGLE,GOOGL,USD,34,"11,041",324.74,322.86,-0.58,"16,070,680",2.08,-2.53,-8.39,"-12,283","16,164,170","-93,490",,,
+AMD,NASDAQ:AMD,USD,23,"5,098",221.64,208.44,-5.95,"7,018,592",0.91,8.28,15.94,"23,336","7,462,967","-444,375",,,
+S_KDQ150(ETF),KRX:450910,KRW,261,"5,172,275",19817.15,"18,160.00",-8.36,"4,739,760",0.61,-3.38,-635.00,-635,"5,172,275","-432,515",,,`,
 
     history: `일자,총 평가금,총 투자금
 25. 12. 10,"696,023,773","537,908,219"
@@ -118,8 +119,10 @@ function getNoCacheUrl(url) {
 async function fetchData() {
     const summaryTable = document.querySelector('#summary-table tbody');
     const holdingsTable = document.querySelector('#holdings-table tbody');
+    const lastUpdated = document.getElementById('last-updated');
     
-    summaryTable.innerHTML = '<tr><td colspan="6" class="loading">데이터 불러오는 중...</td></tr>';
+    // 로딩 표시
+    if (summaryTable) summaryTable.innerHTML = '<tr><td colspan="6" class="loading">데이터 불러오는 중...</td></tr>';
     
     try {
         // 1. Summary Fetch (Cache busting added)
@@ -127,14 +130,24 @@ async function fetchData() {
             download: true,
             header: false,
             complete: function(results) {
-                if (!results.data || results.data.length === 0) throw new Error("Empty data");
+                console.log("Summary Download Complete", results);
+                if (results.errors.length > 0 || !results.data || results.data.length === 0) {
+                    throw new Error("Empty or invalid data");
+                }
                 renderSummary(results.data, summaryTable);
+                // 성공하면 백업 데이터는 쓰지 않음
                 loadHoldings(holdingsTable, false);
                 loadHistory(false);
             },
-            error: function() { useBackupData(summaryTable, holdingsTable); }
+            error: function(err) {
+                console.warn("Summary fetch failed (likely CORS), using backup.", err);
+                useBackupData(summaryTable, holdingsTable);
+            }
         });
-    } catch (e) { useBackupData(summaryTable, holdingsTable); }
+    } catch (e) {
+        console.warn("Fetch error, using backup.", e);
+        useBackupData(summaryTable, holdingsTable);
+    }
 }
 
 function loadHoldings(holdingsTable, useBackup) {
@@ -144,10 +157,11 @@ function loadHoldings(holdingsTable, useBackup) {
         download: true,
         header: false,
         complete: function(results) {
-            processHoldingsData(results.data);
-            renderHoldingsTable();
+             processHoldingsData(results.data);
+             renderHoldingsTable();
         },
-        error: function() {
+        error: function(err) {
+            console.warn("Holdings fetch failed, using backup.", err);
             processHoldingsData(Papa.parse(BACKUP_DATA.holdings, { header: false }).data);
             renderHoldingsTable();
         }
@@ -164,7 +178,8 @@ function loadHistory(useBackup) {
             renderHistoryChart(results.data);
             updateTimestamp(true);
         },
-        error: function() {
+        error: function(err) {
+            console.warn("History fetch failed, using backup.", err);
             renderHistoryChart(Papa.parse(BACKUP_DATA.history, { header: false }).data);
             updateTimestamp(false);
         }
@@ -172,10 +187,21 @@ function loadHistory(useBackup) {
 }
 
 function useBackupData(summaryTable, holdingsTable) {
-    renderSummary(Papa.parse(BACKUP_DATA.summary, { header: false }).data, summaryTable);
-    processHoldingsData(Papa.parse(BACKUP_DATA.holdings, { header: false }).data);
+    console.log("🐶 Using Backup Data due to CORS/Fetch error");
+    
+    // Parse Summary Backup
+    const sumResults = Papa.parse(BACKUP_DATA.summary, { header: false });
+    renderSummary(sumResults.data, summaryTable);
+    
+    // Parse Holdings Backup
+    const holdResults = Papa.parse(BACKUP_DATA.holdings, { header: false });
+    processHoldingsData(holdResults.data);
     renderHoldingsTable();
-    renderHistoryChart(Papa.parse(BACKUP_DATA.history, { header: false }).data);
+    
+    // Parse History Backup
+    const histResults = Papa.parse(BACKUP_DATA.history, { header: false });
+    renderHistoryChart(histResults.data);
+    
     updateTimestamp(false);
 }
 
@@ -200,10 +226,28 @@ function updateTimestamp(isLive) {
     }
 }
 
+function formatNumber(str) {
+    if (!str) return "0";
+    return str; 
+}
+
+function getColorClass(value) {
+    if (!value) return "";
+    const cleanVal = value.toString().replace(/,/g, '').replace(/%/g, '');
+    const num = parseFloat(cleanVal);
+    
+    if (isNaN(num)) return "";
+    if (num > 0) return "value-up";
+    if (num < 0) return "value-down";
+    return "";
+}
+
 // ------------------- Summary Logic -------------------
 function renderSummary(data, tableElement) {
+    if (!tableElement) return;
     tableElement.innerHTML = '';
     
+    // 차트용 데이터 배열
     const chartLabels = [];
     const chartInvest = [];
     const chartEval = [];
@@ -213,19 +257,23 @@ function renderSummary(data, tableElement) {
         if (!row[0] || row[0].trim() === "") continue;
 
         const name = row[0];
+        
+        // "달러 합산", "원화 합산" 포함된 행은 숨기기 (요청사항)
         if (name.includes("달러 합산") || name.includes("원화 합산")) continue;
 
         const tr = document.createElement('tr');
+        
         const isTotalRow = name.includes("합계");
 
-        if (isTotalRow) tr.classList.add("account-total");
+        if (isTotalRow) {
+            tr.classList.add("account-total");
+        }
 
         const totalEval = row[1];
         const totalInvest = row[2];
         const totalIncome = row[3];
-        // const returnRate = row[4]; 
         // Col 6 is Daily Change Amount
-        const dailyChangeAmt = row[6] || "0"; 
+        const dailyChangeAmt = row[6] || "0";
 
         // 수익률 직접 계산: (평가금 / 투자금) - 1
         let calcReturnRateStr = "0.00%";
@@ -254,6 +302,7 @@ function renderSummary(data, tableElement) {
         tableElement.appendChild(tr);
     }
 
+    // 차트 그리기
     renderSummaryChart(chartLabels, chartInvest, chartEval);
 }
 
@@ -268,7 +317,7 @@ function processHoldingsData(data) {
         const returnRateStr = row[7] || "0";
         const evalKRWStr = row[8] || "0";
         const weightStr = row[9] || "0";
-        const dailyChangeStr = row[10] || "0"; // 일일 변동률
+        const dailyChangeStr = row[10] || "0"; // 일일 변동률 (Index 10)
         const profitKRWStr = row[14] || "0";
 
         const weight = parseFloat(weightStr) || 0;
@@ -277,7 +326,7 @@ function processHoldingsData(data) {
         const profitKRW = parseFloat(profitKRWStr.replace(/,/g, '')) || 0;
         const dailyChange = parseFloat(dailyChangeStr.replace(/%/g, '')) || 0;
 
-        if (weight === 0 && evalKRW === 0) continue;
+        if (weight === 0 && evalKRW === 0) continue; // 유효하지 않은 데이터 건너뛰기
 
         globalHoldings.push({
             name: name,
@@ -286,6 +335,7 @@ function processHoldingsData(data) {
             eval: evalKRW,
             profit: profitKRW,
             dailyChange: dailyChange,
+            // 화면 표시용 문자열 저장
             display: {
                 weight: weightStr,
                 returnRate: returnRateStr,
@@ -295,6 +345,7 @@ function processHoldingsData(data) {
             }
         });
     }
+    // 초기 정렬 적용
     sortHoldings(sortState.column, false);
 }
 
@@ -304,14 +355,19 @@ function sortHoldings(column, toggle = true) {
             sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
         } else {
             sortState.column = column;
-            sortState.direction = 'desc';
+            sortState.direction = 'desc'; // 새 컬럼 누르면 보통 큰게 먼저 보고 싶음
         }
     }
 
     globalHoldings.sort((a, b) => {
         let valA = a[column];
         let valB = b[column];
-        return sortState.direction === 'asc' ? valA - valB : valB - valA;
+
+        if (sortState.direction === 'asc') {
+            return valA - valB;
+        } else {
+            return valB - valA;
+        }
     });
 
     renderHoldingsTable();
@@ -322,13 +378,16 @@ function updateSortIcons() {
     const headers = document.querySelectorAll('#holdings-table th');
     headers.forEach(th => {
         if (th.textContent.includes('↕') || th.textContent.includes('↑') || th.textContent.includes('↓')) {
+            // 초기화
             let text = th.textContent.replace(' ↑', '').replace(' ↓', '').replace(' ↕', '');
+            
+            // 현재 정렬 컬럼 확인
             if (th.getAttribute('onclick') && th.getAttribute('onclick').includes(`'${sortState.column}'`)) {
                 text += sortState.direction === 'asc' ? ' ↑' : ' ↓';
-                th.style.color = "#333";
+                th.style.color = "#333"; // 활성 색상
             } else {
                 text += ' ↕';
-                th.style.color = "#999";
+                th.style.color = "#999"; // 비활성 색상
             }
             th.textContent = text;
         }
@@ -337,16 +396,26 @@ function updateSortIcons() {
 
 function renderHoldingsTable() {
     const tableElement = document.querySelector('#holdings-table tbody');
+    if (!tableElement) return;
     tableElement.innerHTML = '';
+
     globalHoldings.forEach(item => {
         const tr = document.createElement('tr');
+        // 일일 변동률에는 %를 붙여서 표시
+        // 이미 문자열에 %가 있다면 중복될 수 있으나, 위 로직상 dailyChangeStr는 CSV raw값 (e.g. 9.05)
+        // CSV 값에 %가 포함되어 있다면 그대로 둠. 포함 안되어 있으면 붙임.
+        let displayDailyChange = item.display.dailyChange;
+        if (!displayDailyChange.includes('%')) {
+            displayDailyChange += '%';
+        }
+
         tr.innerHTML = `
             <td>${item.name}</td>
             <td>${item.display.weight}%</td>
             <td class="${getColorClass(item.display.returnRate)}">${item.display.returnRate}%</td>
             <td class="${getColorClass(item.display.profitKRW)}">${item.display.profitKRW}</td>
             <td>${item.display.evalKRW}</td>
-            <td class="${getColorClass(item.display.dailyChange)}">${item.display.dailyChange}%</td>
+            <td class="${getColorClass(item.display.dailyChange)}">${displayDailyChange}</td>
         `;
         tableElement.appendChild(tr);
     });
@@ -355,7 +424,10 @@ function renderHoldingsTable() {
 // ------------------- Charts Logic -------------------
 function renderSummaryChart(labels, investData, evalData) {
     const ctx = document.getElementById('summaryChart').getContext('2d');
-    if (summaryChart) summaryChart.destroy();
+    
+    if (summaryChart) {
+        summaryChart.destroy();
+    }
 
     summaryChart = new Chart(ctx, {
         type: 'bar',
@@ -365,14 +437,14 @@ function renderSummaryChart(labels, investData, evalData) {
                 {
                     label: '투자원금',
                     data: investData,
-                    backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.6)', // 파랑
                     borderColor: 'rgba(54, 162, 235, 1)',
                     borderWidth: 1
                 },
                 {
                     label: '평가금액',
                     data: evalData,
-                    backgroundColor: 'rgba(255, 99, 132, 0.6)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.6)', // 빨강
                     borderColor: 'rgba(255, 99, 132, 1)',
                     borderWidth: 1
                 }
@@ -381,10 +453,38 @@ function renderSummaryChart(labels, investData, evalData) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: '계좌별 투자금 vs 평가금 비교'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(context.parsed.y);
+                            }
+                            return label;
+                        }
+                    }
+                }
+            },
             scales: {
                 y: {
                     beginAtZero: true,
-                    ticks: { callback: v => new Intl.NumberFormat('ko-KR', { notation: "compact" }).format(v) }
+                    ticks: {
+                        callback: function(value) {
+                            return new Intl.NumberFormat('ko-KR', { notation: "compact", maximumFractionDigits: 1 }).format(value);
+                        }
+                    }
                 }
             }
         }
@@ -411,7 +511,10 @@ function renderHistoryChart(data) {
     }
 
     const ctx = document.getElementById('historyChart').getContext('2d');
-    if (historyChart) historyChart.destroy();
+    
+    if (historyChart) {
+        historyChart.destroy();
+    }
 
     historyChart = new Chart(ctx, {
         type: 'line',
@@ -444,23 +547,35 @@ function renderHistoryChart(data) {
                 intersect: false,
             },
             plugins: {
-                title: { display: true, text: '자산 변동 추이' }
+                title: {
+                    display: true,
+                    text: '자산 변동 추이'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(context.parsed.y);
+                            }
+                            return label;
+                        }
+                    }
+                }
             },
             scales: {
                 y: {
                     beginAtZero: false, // 금액 변화가 크지 않을 수 있으니 0부터 시작하지 않음
-                    ticks: { callback: v => new Intl.NumberFormat('ko-KR', { notation: "compact" }).format(v) }
+                    ticks: {
+                        callback: function(value) {
+                            return new Intl.NumberFormat('ko-KR', { notation: "compact" }).format(value);
+                        }
+                    }
                 }
             }
         }
     });
-}
-
-// ------------------- Utils -------------------
-function getColorClass(value) {
-    if (!value) return "";
-    const cleanVal = value.toString().replace(/,/g, '').replace(/%/g, '');
-    const num = parseFloat(cleanVal);
-    if (isNaN(num)) return "";
-    return num > 0 ? "value-up" : (num < 0 ? "value-down" : "");
 }
