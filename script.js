@@ -1,5 +1,5 @@
 // 🐶 바둑이의 주식 데이터 처리 스크립트
-// 업데이트: 2026-02-09 (프록시 다중 시도 전략)
+// 업데이트: 2026-02-09 (AI 한줄 전망 추가)
 
 const CONFIG = {
     // 원본 주소 (CORS 에러 가능성 높음, 하지만 가장 빠름)
@@ -17,7 +17,37 @@ const PROXIES = [
     // 3. Google Apps Script Proxy (이건 예시, 필요하면 추가 가능)
 ];
 
-// ... (BACKUP_DATA는 그대로 유지) ...
+// 종목별 한줄 전망 (AI Generated - 2026.02 기준)
+const STOCK_OUTLOOKS = {
+    "하나금융지주": "주주환원 확대 기대감 유효, 금리 인하 시기 순이자마진 방어가 관건.",
+    "RKLB": "뉴트론 로켓 개발 순항 중, 우주 산업 성장성과 함께 장기적 주가 상승 기대.",
+    "TSLA": "전기차 수요 둔화 우려와 로보택시/AI 모멘텀이 공존하는 구간, 변동성 주의.",
+    "ABBV": "휴미라 특허 만료 방어 양호, 스카이리치 등 신약 포트폴리오 성장세 견조.",
+    "VOO": "미국 시장 전체에 투자하는 가장 확실한 방법, 장기 우상향 믿음 여전.",
+    "현대차2우B": "실적 호조 지속 및 높은 배당 수익률 매력, 피크아웃 우려는 상존.",
+    "JNJ": "소비자 헬스 분사 후 제약/의료기기 집중, 소송 리스크 완화되며 안정세.",
+    "T_NASDAQ(ETF)": "금리 인하 사이클 진입 시 기술주 중심의 나스닥 강세 지속 전망.",
+    "MO": "높은 배당 수익률은 매력적이나, 흡연율 감소라는 구조적 리스크는 부담.",
+    "DGRO": "배당 성장주 위주 포트폴리오로 하락장에서의 방어력과 장기 성장성 겸비.",
+    "AAPL": "서비스 부문 성장과 온디바이스 AI 기대감으로 아이폰 판매 정체 상쇄.",
+    "T_S&P500(ETF)": "워렌 버핏이 추천하는 최고의 장기 투자처, 적립식 투자에 최적.",
+    "SCHD": "현금 흐름 중시 투자자에게 최고의 선택, 배당 성장 ETF의 대장주.",
+    "S_SCHD(ETF)": "한국판 SCHD, 연금 계좌 활용 시 절세 효과와 함께 안정적 배당 기대.",
+    "NEE": "신재생 에너지 대장주, 고금리 기조 완화 시 주가 반등 탄력 기대.",
+    "O": "월배당 리츠 대장주, 금리 인하 시기 대표적인 수혜주로 꼽힘.",
+    "PLUS50(ETF)": "코스피 대표 우량주 분산 투자, 한국 시장의 베타 수익 추구.",
+    "K_S&P500(ETF)": "환노출형 S&P500 ETF, 달러 강세 시 환차익까지 기대 가능.",
+    "QQQM": "QQQ와 동일한 지수 추종하나 수수료가 저렴해 장기 보유에 더 유리.",
+    "SPYM": "S&P 500 추종으로 안정적인 시장 수익률 달성 목표.",
+    "K_NASDAQ(ETF)": "나스닥 100 지수 추종, 미국 기술주 성장에 올라타는 효율적 수단.",
+    "NVIDIA": "AI 칩 시장 독점적 지위 지속, 실적 서프라이즈 기대감 여전히 유효.",
+    "K_AI테크(ETF)": "국내 AI 반도체 및 소프트웨어 생태계 성장에 집중 투자.",
+    "GOOGLE": "검색 광고 매출 견조, 제미나이 등 AI 경쟁력 입증 여부가 주가 향방 결정.",
+    "AMD": "엔비디아 추격하는 AI 칩 2인자, 데이터센터 점유율 확대 노력 지속.",
+    "S_KDQ150(ETF)": "코스닥 대표 150종목 투자, 변동성은 크지만 높은 성장 잠재력 보유."
+};
+
+// ⚠️ 브라우저 보안(CORS) 대비 백업 데이터 (2026-02-09 최신화)
 const BACKUP_DATA = {
     summary: `,총 평가금,총 투자금,총 수입액,수익률,일 변화율,일 변화액,국내 1일 변화율,국내 1일 변화액,국외 1일 변화율,국외 1일 변화액,배당금,,,
 AJM,"417,509,479","250,683,881","166,825,598",66.55%,1.77%,"7,253,710",2.08%,"3,045,330",1.59%,"4,208,380","24,781,805",,,
@@ -33,7 +63,7 @@ JJG-w-KKO-ISA,"30,402,105","30,798,208","-396,103",-1.29%,2.60%,"771,620",2.60%,
 
     holdings: `종목명,Ticker,화폐단위,총 수량,"총 매수금액\n(현지통화)","평균단가\n(현지통화)","현재가\n(현지통화)","수익률\n(%)","평가금액\n(원)",비중(%),"일간 변동율\n(%)","일간 변동액\n(현지통화)","일간 변동액\n(원)","총 매수금액\n(원)","수익액\n(원)",환율,1464.0,
 하나금융지주,KRX:086790,KRW,1,"60,491",60491.25,"114,600.00",89.45,"114,600",0.01,0.44,500.00,500,"60,491","54,109",,,
-RKLB,NASDAQ:RKLB,USD,96,"3,879",40.41,72.32,78.98,"10,168,863",1.32,9.05,6.00,"8,788","5,681,549","4,487,314",합산,"772,487,213",
+RKLB,NASDAQ:RKLB,USD,96,"3,879",40.41,72.32,78.98,"10,164,142",1.32,9.05,6.00,"8,784","5,678,912","4,485,230",합산,"772,487,213",
 TSLA,NASDAQ:TSLA,USD,29,"6,823",235.26,411.11,74.74,"17,454,087",2.26,3.50,13.90,"20,350","9,988,399","7,465,688",달러 합산,"457,519,369",59.22%
 ABBV,NYSE:ABBV,USD,52,"6,807",130.91,223.43,70.68,"17,009,280",2.20,2.01,4.41,"6,456","9,965,581","7,043,700",원화 합산,"315,052,400",40.78%
 VOO,NYSEARCA:VOO,USD,22,"8,767",398.49,635.24,59.41,"20,459,811",2.65,1.95,12.14,"17,773","12,834,707","7,625,104",,,
@@ -127,7 +157,7 @@ async function fetchData() {
     const holdingsTable = document.querySelector('#holdings-table tbody');
     const lastUpdated = document.getElementById('last-updated');
     
-    if (summaryTable) summaryTable.innerHTML = '<tr><td colspan="6" class="loading">데이터 불러오는 중... (연결 시도)</td></tr>';
+    if (summaryTable) summaryTable.innerHTML = '<tr><td colspan="7" class="loading">데이터 불러오는 중... (연결 시도)</td></tr>';
     
     // 1. Summary
     await fetchWithFallback(CONFIG.summaryURL, 
@@ -166,8 +196,6 @@ async function fetchData() {
 }
 
 // 재사용 가능한 Fetcher (Direct -> Proxies -> Fail)
-// 성공하면 onSuccess(parsedData) 호출하고 true 반환
-// 실패하면 onFail() 호출하고 false 반환
 async function fetchWithFallback(targetUrl, onSuccess, onFail) {
     const urlsToTry = [
         targetUrl + '&t=' + Date.now(), // Direct
@@ -182,7 +210,6 @@ async function fetchWithFallback(targetUrl, onSuccess, onFail) {
         try {
             console.log(`Trying ${method}: ${url}`);
             
-            // Papa.parse의 비동기 래퍼
             const result = await new Promise((resolve, reject) => {
                 Papa.parse(url, {
                     download: true,
@@ -196,14 +223,13 @@ async function fetchWithFallback(targetUrl, onSuccess, onFail) {
                 console.log(`Success via ${method}`);
                 onSuccess(result.data);
                 updateTimestamp(true, method);
-                return true; // 성공하면 종료
+                return true; 
             }
         } catch (e) {
             console.warn(`Failed via ${method}`, e);
         }
     }
 
-    // 모든 시도 실패 시
     console.error("All fetch attempts failed. Using Backup.");
     onFail();
     updateTimestamp(false, "Backup");
@@ -213,32 +239,18 @@ async function fetchWithFallback(targetUrl, onSuccess, onFail) {
 function updateTimestamp(isLive, method) {
     const lastUpdated = document.getElementById('last-updated');
     const now = new Date();
+    const formattedTime = now.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
     
-    // YYYY-MM-DD HH:MM:SS 포맷팅
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    
-    const formattedTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-    
-    // 상태 표시: 여러 요청이 동시에 업데이트하므로 "Live"가 하나라도 있으면 Live로 표시하도록 덮어쓰기 로직 필요
-    // 여기서는 간단히 마지막 성공한 메서드를 표시
     if (isLive) {
         lastUpdated.innerHTML = `Last Update: ${formattedTime} (Live 🟢 via ${method})`;
-        lastUpdated.style.color = "#2e7d32"; // 녹색
+        lastUpdated.style.color = "#2e7d32"; 
     } else {
-        // 이미 Live 상태라면 Backup으로 덮어쓰지 않도록 방어 (부분 실패일 수 있음)
         if (!lastUpdated.innerHTML.includes("Live")) {
             lastUpdated.innerHTML = `Last Update: ${formattedTime} (Backup 🟠)`;
-            lastUpdated.style.color = "#d84315"; // 주황색
+            lastUpdated.style.color = "#d84315"; 
         }
     }
 }
-
-// ... (나머지 렌더링 함수들 - formatNumber, getColorClass, renderSummary, processHoldingsData, sortHoldings, updateSortIcons, renderHoldingsTable, renderSummaryChart, renderHistoryChart ... 기존과 동일)
 
 function formatNumber(str) {
     if (!str) return "0";
@@ -256,6 +268,7 @@ function getColorClass(value) {
     return "";
 }
 
+// ------------------- Summary Logic -------------------
 function renderSummary(data, tableElement) {
     if (!tableElement) return;
     tableElement.innerHTML = '';
@@ -269,7 +282,6 @@ function renderSummary(data, tableElement) {
         if (!row[0] || row[0].trim() === "") continue;
 
         const name = row[0];
-        
         if (name.includes("달러 합산") || name.includes("원화 합산")) continue;
 
         const tr = document.createElement('tr');
@@ -313,6 +325,7 @@ function renderSummary(data, tableElement) {
     renderSummaryChart(chartLabels, chartInvest, chartEval);
 }
 
+// ------------------- Holdings Logic -------------------
 function processHoldingsData(data) {
     globalHoldings = [];
     for (let i = 1; i < data.length; i++) {
@@ -323,8 +336,11 @@ function processHoldingsData(data) {
         const returnRateStr = row[7] || "0";
         const evalKRWStr = row[8] || "0";
         const weightStr = row[9] || "0";
-        const dailyChangeStr = row[10] || "0";
+        const dailyChangeStr = row[10] || "0"; 
         const profitKRWStr = row[14] || "0";
+
+        // AI 전망 Lookup
+        const outlook = STOCK_OUTLOOKS[name] || "-";
 
         const weight = parseFloat(weightStr) || 0;
         const returnRate = parseFloat(returnRateStr.replace(/%/g, '')) || 0;
@@ -332,7 +348,7 @@ function processHoldingsData(data) {
         const profitKRW = parseFloat(profitKRWStr.replace(/,/g, '')) || 0;
         const dailyChange = parseFloat(dailyChangeStr.replace(/%/g, '')) || 0;
 
-        if (weight === 0 && evalKRW === 0) continue;
+        if (weight === 0 && evalKRW === 0) continue; 
 
         globalHoldings.push({
             name: name,
@@ -341,6 +357,7 @@ function processHoldingsData(data) {
             eval: evalKRW,
             profit: profitKRW,
             dailyChange: dailyChange,
+            outlook: outlook,
             display: {
                 weight: weightStr,
                 returnRate: returnRateStr,
@@ -409,6 +426,7 @@ function renderHoldingsTable() {
             <td class="${getColorClass(item.display.profitKRW)}">${item.display.profitKRW}</td>
             <td>${item.display.evalKRW}</td>
             <td class="${getColorClass(item.display.dailyChange)}">${displayDailyChange}</td>
+            <td style="font-size: 0.85em; color: #555; text-align: left;">${item.outlook}</td>
         `;
         tableElement.appendChild(tr);
     });
