@@ -1,5 +1,5 @@
 // 🐶 바둑이의 주식 데이터 처리 스크립트
-// 업데이트: 2026-02-08 (History 그래프 추가)
+// 업데이트: 2026-02-09 (일일 변동량/변동률 추가 + 캐시 방지)
 
 const CONFIG = {
     summaryURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=0&single=true&output=csv",
@@ -110,15 +110,20 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchData();
 });
 
+// 캐시 방지를 위한 URL 생성 함수
+function getNoCacheUrl(url) {
+    return `${url}&t=${Date.now()}`;
+}
+
 async function fetchData() {
     const summaryTable = document.querySelector('#summary-table tbody');
     const holdingsTable = document.querySelector('#holdings-table tbody');
     
-    summaryTable.innerHTML = '<tr><td colspan="5" class="loading">데이터 불러오는 중...</td></tr>';
+    summaryTable.innerHTML = '<tr><td colspan="6" class="loading">데이터 불러오는 중...</td></tr>';
     
     try {
-        // 1. Summary Fetch
-        Papa.parse(CONFIG.summaryURL, {
+        // 1. Summary Fetch (Cache busting added)
+        Papa.parse(getNoCacheUrl(CONFIG.summaryURL), {
             download: true,
             header: false,
             complete: function(results) {
@@ -135,7 +140,7 @@ async function fetchData() {
 function loadHoldings(holdingsTable, useBackup) {
     if (useBackup) return;
     
-    Papa.parse(CONFIG.holdingsURL, {
+    Papa.parse(getNoCacheUrl(CONFIG.holdingsURL), {
         download: true,
         header: false,
         complete: function(results) {
@@ -152,7 +157,7 @@ function loadHoldings(holdingsTable, useBackup) {
 function loadHistory(useBackup) {
     if (useBackup) return;
 
-    Papa.parse(CONFIG.historyURL, {
+    Papa.parse(getNoCacheUrl(CONFIG.historyURL), {
         download: true,
         header: false,
         complete: function(results) {
@@ -218,7 +223,9 @@ function renderSummary(data, tableElement) {
         const totalEval = row[1];
         const totalInvest = row[2];
         const totalIncome = row[3];
-        // const returnRate = row[4]; // 기존 데이터(평가/원금 비율) 대신 계산
+        // const returnRate = row[4]; 
+        // Col 6 is Daily Change Amount
+        const dailyChangeAmt = row[6] || "0"; 
 
         // 수익률 직접 계산: (평가금 / 투자금) - 1
         let calcReturnRateStr = "0.00%";
@@ -242,6 +249,7 @@ function renderSummary(data, tableElement) {
             <td>${totalInvest}</td>
             <td class="${getColorClass(totalIncome)}">${totalIncome}</td>
             <td class="${getColorClass(calcReturnRateStr)}">${calcReturnRateStr}</td>
+            <td class="${getColorClass(dailyChangeAmt)}">${dailyChangeAmt}</td>
         `;
         tableElement.appendChild(tr);
     }
@@ -260,12 +268,14 @@ function processHoldingsData(data) {
         const returnRateStr = row[7] || "0";
         const evalKRWStr = row[8] || "0";
         const weightStr = row[9] || "0";
+        const dailyChangeStr = row[10] || "0"; // 일일 변동률
         const profitKRWStr = row[14] || "0";
 
         const weight = parseFloat(weightStr) || 0;
         const returnRate = parseFloat(returnRateStr.replace(/%/g, '')) || 0;
         const evalKRW = parseFloat(evalKRWStr.replace(/,/g, '')) || 0;
         const profitKRW = parseFloat(profitKRWStr.replace(/,/g, '')) || 0;
+        const dailyChange = parseFloat(dailyChangeStr.replace(/%/g, '')) || 0;
 
         if (weight === 0 && evalKRW === 0) continue;
 
@@ -275,11 +285,13 @@ function processHoldingsData(data) {
             returnRate: returnRate,
             eval: evalKRW,
             profit: profitKRW,
+            dailyChange: dailyChange,
             display: {
                 weight: weightStr,
                 returnRate: returnRateStr,
                 evalKRW: evalKRWStr,
-                profitKRW: profitKRWStr
+                profitKRW: profitKRWStr,
+                dailyChange: dailyChangeStr
             }
         });
     }
@@ -334,6 +346,7 @@ function renderHoldingsTable() {
             <td class="${getColorClass(item.display.returnRate)}">${item.display.returnRate}%</td>
             <td class="${getColorClass(item.display.profitKRW)}">${item.display.profitKRW}</td>
             <td>${item.display.evalKRW}</td>
+            <td class="${getColorClass(item.display.dailyChange)}">${item.display.dailyChange}%</td>
         `;
         tableElement.appendChild(tr);
     });
