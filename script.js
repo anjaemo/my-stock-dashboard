@@ -1,11 +1,14 @@
 // 🐶 바둑이의 주식 데이터 처리 스크립트
-// 업데이트: 2026-02-09 (데이터 최신화 및 캐시 방지 강화)
+// 업데이트: 2026-02-09 (CORS 프록시 추가로 Live 데이터 강제 활성화)
 
 const CONFIG = {
     summaryURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=0&single=true&output=csv",
     holdingsURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=58859590&single=true&output=csv",
     historyURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=1713255630&single=true&output=csv"
 };
+
+// CORS 문제 해결을 위한 공개 프록시 (무료 서비스 사용)
+const PROXY_URL = "https://corsproxy.io/?";
 
 // ⚠️ 브라우저 보안(CORS) 대비 백업 데이터 (2026-02-09 최신화)
 const BACKUP_DATA = {
@@ -111,9 +114,9 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchData();
 });
 
-// 캐시 방지를 위한 URL 생성 함수
+// 캐시 방지를 위한 URL 생성 함수 (프록시 적용)
 function getNoCacheUrl(url) {
-    return `${url}&t=${Date.now()}`;
+    return `${PROXY_URL}${encodeURIComponent(url + '&t=' + Date.now())}`;
 }
 
 async function fetchData() {
@@ -122,10 +125,10 @@ async function fetchData() {
     const lastUpdated = document.getElementById('last-updated');
     
     // 로딩 표시
-    if (summaryTable) summaryTable.innerHTML = '<tr><td colspan="6" class="loading">데이터 불러오는 중...</td></tr>';
+    if (summaryTable) summaryTable.innerHTML = '<tr><td colspan="6" class="loading">데이터 불러오는 중... (Live 연결 시도)</td></tr>';
     
     try {
-        // 1. Summary Fetch (Cache busting added)
+        // 1. Summary Fetch (Cache busting added + Proxy)
         Papa.parse(getNoCacheUrl(CONFIG.summaryURL), {
             download: true,
             header: false,
@@ -220,9 +223,9 @@ function updateTimestamp(isLive) {
     const formattedTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     
     if (isLive) {
-        lastUpdated.innerHTML = `Last Update: ${formattedTime} (Live)`;
+        lastUpdated.innerHTML = `Last Update: ${formattedTime} (Live 🟢)`;
     } else {
-        lastUpdated.innerHTML = `Last Update: ${formattedTime} (Backup)`;
+        lastUpdated.innerHTML = `Last Update: ${formattedTime} (Backup 🟠)`;
     }
 }
 
