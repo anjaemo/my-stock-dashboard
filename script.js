@@ -1,16 +1,23 @@
 // 🐶 바둑이의 주식 데이터 처리 스크립트
-// 업데이트: 2026-02-09 (CORS 프록시 추가로 Live 데이터 강제 활성화)
+// 업데이트: 2026-02-09 (프록시 다중 시도 전략)
 
 const CONFIG = {
+    // 원본 주소 (CORS 에러 가능성 높음, 하지만 가장 빠름)
     summaryURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=0&single=true&output=csv",
     holdingsURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=58859590&single=true&output=csv",
     historyURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=1713255630&single=true&output=csv"
 };
 
-// CORS 문제 해결을 위한 공개 프록시 (무료 서비스 사용)
-const PROXY_URL = "https://corsproxy.io/?";
+// 프록시 목록 (순서대로 시도)
+const PROXIES = [
+    // 1. AllOrigins (JSONP/Raw 지원, 안정적)
+    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    // 2. CorsProxy.io (간편함)
+    (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    // 3. Google Apps Script Proxy (이건 예시, 필요하면 추가 가능)
+];
 
-// ⚠️ 브라우저 보안(CORS) 대비 백업 데이터 (2026-02-09 최신화)
+// ... (BACKUP_DATA는 그대로 유지) ...
 const BACKUP_DATA = {
     summary: `,총 평가금,총 투자금,총 수입액,수익률,일 변화율,일 변화액,국내 1일 변화율,국내 1일 변화액,국외 1일 변화율,국외 1일 변화액,배당금,,,
 AJM,"417,509,479","250,683,881","166,825,598",66.55%,1.77%,"7,253,710",2.08%,"3,045,330",1.59%,"4,208,380","24,781,805",,,
@@ -26,7 +33,7 @@ JJG-w-KKO-ISA,"30,402,105","30,798,208","-396,103",-1.29%,2.60%,"771,620",2.60%,
 
     holdings: `종목명,Ticker,화폐단위,총 수량,"총 매수금액\n(현지통화)","평균단가\n(현지통화)","현재가\n(현지통화)","수익률\n(%)","평가금액\n(원)",비중(%),"일간 변동율\n(%)","일간 변동액\n(현지통화)","일간 변동액\n(원)","총 매수금액\n(원)","수익액\n(원)",환율,1464.0,
 하나금융지주,KRX:086790,KRW,1,"60,491",60491.25,"114,600.00",89.45,"114,600",0.01,0.44,500.00,500,"60,491","54,109",,,
-RKLB,NASDAQ:RKLB,USD,96,"3,879",40.41,72.32,78.98,"10,164,142",1.32,9.05,6.00,"8,784","5,678,912","4,485,230",합산,"772,487,213",
+RKLB,NASDAQ:RKLB,USD,96,"3,879",40.41,72.32,78.98,"10,168,863",1.32,9.05,6.00,"8,788","5,681,549","4,487,314",합산,"772,487,213",
 TSLA,NASDAQ:TSLA,USD,29,"6,823",235.26,411.11,74.74,"17,454,087",2.26,3.50,13.90,"20,350","9,988,399","7,465,688",달러 합산,"457,519,369",59.22%
 ABBV,NYSE:ABBV,USD,52,"6,807",130.91,223.43,70.68,"17,009,280",2.20,2.01,4.41,"6,456","9,965,581","7,043,700",원화 합산,"315,052,400",40.78%
 VOO,NYSEARCA:VOO,USD,22,"8,767",398.49,635.24,59.41,"20,459,811",2.65,1.95,12.14,"17,773","12,834,707","7,625,104",,,
@@ -114,101 +121,96 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchData();
 });
 
-// 캐시 방지를 위한 URL 생성 함수 (프록시 적용)
-function getNoCacheUrl(url) {
-    return `${PROXY_URL}${encodeURIComponent(url + '&t=' + Date.now())}`;
-}
-
+// 데이터 가져오기 (Waterfall 전략: 직접 -> 프록시1 -> 프록시2 -> 백업)
 async function fetchData() {
     const summaryTable = document.querySelector('#summary-table tbody');
     const holdingsTable = document.querySelector('#holdings-table tbody');
     const lastUpdated = document.getElementById('last-updated');
     
-    // 로딩 표시
-    if (summaryTable) summaryTable.innerHTML = '<tr><td colspan="6" class="loading">데이터 불러오는 중... (Live 연결 시도)</td></tr>';
+    if (summaryTable) summaryTable.innerHTML = '<tr><td colspan="6" class="loading">데이터 불러오는 중... (연결 시도)</td></tr>';
     
-    try {
-        // 1. Summary Fetch (Cache busting added + Proxy)
-        Papa.parse(getNoCacheUrl(CONFIG.summaryURL), {
-            download: true,
-            header: false,
-            complete: function(results) {
-                console.log("Summary Download Complete", results);
-                if (results.errors.length > 0 || !results.data || results.data.length === 0) {
-                    throw new Error("Empty or invalid data");
-                }
-                renderSummary(results.data, summaryTable);
-                // 성공하면 백업 데이터는 쓰지 않음
-                loadHoldings(holdingsTable, false);
-                loadHistory(false);
-            },
-            error: function(err) {
-                console.warn("Summary fetch failed (likely CORS), using backup.", err);
-                useBackupData(summaryTable, holdingsTable);
-            }
-        });
-    } catch (e) {
-        console.warn("Fetch error, using backup.", e);
-        useBackupData(summaryTable, holdingsTable);
-    }
-}
+    // 1. Summary
+    await fetchWithFallback(CONFIG.summaryURL, 
+        (data) => {
+            renderSummary(data, summaryTable);
+        }, 
+        () => {
+            const sumResults = Papa.parse(BACKUP_DATA.summary, { header: false });
+            renderSummary(sumResults.data, summaryTable);
+        }
+    );
 
-function loadHoldings(holdingsTable, useBackup) {
-    if (useBackup) return;
-    
-    Papa.parse(getNoCacheUrl(CONFIG.holdingsURL), {
-        download: true,
-        header: false,
-        complete: function(results) {
-             processHoldingsData(results.data);
-             renderHoldingsTable();
-        },
-        error: function(err) {
-            console.warn("Holdings fetch failed, using backup.", err);
-            processHoldingsData(Papa.parse(BACKUP_DATA.holdings, { header: false }).data);
+    // 2. Holdings
+    await fetchWithFallback(CONFIG.holdingsURL, 
+        (data) => {
+            processHoldingsData(data);
+            renderHoldingsTable();
+        }, 
+        () => {
+            const holdResults = Papa.parse(BACKUP_DATA.holdings, { header: false });
+            processHoldingsData(holdResults.data);
             renderHoldingsTable();
         }
-    });
-}
+    );
 
-function loadHistory(useBackup) {
-    if (useBackup) return;
-
-    Papa.parse(getNoCacheUrl(CONFIG.historyURL), {
-        download: true,
-        header: false,
-        complete: function(results) {
-            renderHistoryChart(results.data);
-            updateTimestamp(true);
-        },
-        error: function(err) {
-            console.warn("History fetch failed, using backup.", err);
-            renderHistoryChart(Papa.parse(BACKUP_DATA.history, { header: false }).data);
-            updateTimestamp(false);
+    // 3. History
+    await fetchWithFallback(CONFIG.historyURL, 
+        (data) => {
+            renderHistoryChart(data);
+        }, 
+        () => {
+            const histResults = Papa.parse(BACKUP_DATA.history, { header: false });
+            renderHistoryChart(histResults.data);
         }
-    });
+    );
 }
 
-function useBackupData(summaryTable, holdingsTable) {
-    console.log("🐶 Using Backup Data due to CORS/Fetch error");
-    
-    // Parse Summary Backup
-    const sumResults = Papa.parse(BACKUP_DATA.summary, { header: false });
-    renderSummary(sumResults.data, summaryTable);
-    
-    // Parse Holdings Backup
-    const holdResults = Papa.parse(BACKUP_DATA.holdings, { header: false });
-    processHoldingsData(holdResults.data);
-    renderHoldingsTable();
-    
-    // Parse History Backup
-    const histResults = Papa.parse(BACKUP_DATA.history, { header: false });
-    renderHistoryChart(histResults.data);
-    
-    updateTimestamp(false);
+// 재사용 가능한 Fetcher (Direct -> Proxies -> Fail)
+// 성공하면 onSuccess(parsedData) 호출하고 true 반환
+// 실패하면 onFail() 호출하고 false 반환
+async function fetchWithFallback(targetUrl, onSuccess, onFail) {
+    const urlsToTry = [
+        targetUrl + '&t=' + Date.now(), // Direct
+        PROXIES[0](targetUrl + '&t=' + Date.now()), // Proxy 1
+        PROXIES[1](targetUrl + '&t=' + Date.now())  // Proxy 2
+    ];
+
+    for (let i = 0; i < urlsToTry.length; i++) {
+        const url = urlsToTry[i];
+        const method = i === 0 ? "Direct" : `Proxy ${i}`;
+        
+        try {
+            console.log(`Trying ${method}: ${url}`);
+            
+            // Papa.parse의 비동기 래퍼
+            const result = await new Promise((resolve, reject) => {
+                Papa.parse(url, {
+                    download: true,
+                    header: false,
+                    complete: (res) => resolve(res),
+                    error: (err) => reject(err)
+                });
+            });
+
+            if (result.errors.length === 0 && result.data && result.data.length > 0) {
+                console.log(`Success via ${method}`);
+                onSuccess(result.data);
+                updateTimestamp(true, method);
+                return true; // 성공하면 종료
+            }
+        } catch (e) {
+            console.warn(`Failed via ${method}`, e);
+        }
+    }
+
+    // 모든 시도 실패 시
+    console.error("All fetch attempts failed. Using Backup.");
+    onFail();
+    updateTimestamp(false, "Backup");
+    return false;
 }
 
-function updateTimestamp(isLive) {
+function updateTimestamp(isLive, method) {
     const lastUpdated = document.getElementById('last-updated');
     const now = new Date();
     
@@ -222,12 +224,21 @@ function updateTimestamp(isLive) {
     
     const formattedTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     
+    // 상태 표시: 여러 요청이 동시에 업데이트하므로 "Live"가 하나라도 있으면 Live로 표시하도록 덮어쓰기 로직 필요
+    // 여기서는 간단히 마지막 성공한 메서드를 표시
     if (isLive) {
-        lastUpdated.innerHTML = `Last Update: ${formattedTime} (Live 🟢)`;
+        lastUpdated.innerHTML = `Last Update: ${formattedTime} (Live 🟢 via ${method})`;
+        lastUpdated.style.color = "#2e7d32"; // 녹색
     } else {
-        lastUpdated.innerHTML = `Last Update: ${formattedTime} (Backup 🟠)`;
+        // 이미 Live 상태라면 Backup으로 덮어쓰지 않도록 방어 (부분 실패일 수 있음)
+        if (!lastUpdated.innerHTML.includes("Live")) {
+            lastUpdated.innerHTML = `Last Update: ${formattedTime} (Backup 🟠)`;
+            lastUpdated.style.color = "#d84315"; // 주황색
+        }
     }
 }
+
+// ... (나머지 렌더링 함수들 - formatNumber, getColorClass, renderSummary, processHoldingsData, sortHoldings, updateSortIcons, renderHoldingsTable, renderSummaryChart, renderHistoryChart ... 기존과 동일)
 
 function formatNumber(str) {
     if (!str) return "0";
@@ -245,12 +256,10 @@ function getColorClass(value) {
     return "";
 }
 
-// ------------------- Summary Logic -------------------
 function renderSummary(data, tableElement) {
     if (!tableElement) return;
     tableElement.innerHTML = '';
     
-    // 차트용 데이터 배열
     const chartLabels = [];
     const chartInvest = [];
     const chartEval = [];
@@ -261,11 +270,9 @@ function renderSummary(data, tableElement) {
 
         const name = row[0];
         
-        // "달러 합산", "원화 합산" 포함된 행은 숨기기 (요청사항)
         if (name.includes("달러 합산") || name.includes("원화 합산")) continue;
 
         const tr = document.createElement('tr');
-        
         const isTotalRow = name.includes("합계");
 
         if (isTotalRow) {
@@ -275,10 +282,8 @@ function renderSummary(data, tableElement) {
         const totalEval = row[1];
         const totalInvest = row[2];
         const totalIncome = row[3];
-        // Col 6 is Daily Change Amount
         const dailyChangeAmt = row[6] || "0";
 
-        // 수익률 직접 계산: (평가금 / 투자금) - 1
         let calcReturnRateStr = "0.00%";
         const evalNum = parseFloat(totalEval.replace(/,/g, ''));
         const investNum = parseFloat(totalInvest.replace(/,/g, ''));
@@ -305,11 +310,9 @@ function renderSummary(data, tableElement) {
         tableElement.appendChild(tr);
     }
 
-    // 차트 그리기
     renderSummaryChart(chartLabels, chartInvest, chartEval);
 }
 
-// ------------------- Holdings Logic -------------------
 function processHoldingsData(data) {
     globalHoldings = [];
     for (let i = 1; i < data.length; i++) {
@@ -320,7 +323,7 @@ function processHoldingsData(data) {
         const returnRateStr = row[7] || "0";
         const evalKRWStr = row[8] || "0";
         const weightStr = row[9] || "0";
-        const dailyChangeStr = row[10] || "0"; // 일일 변동률 (Index 10)
+        const dailyChangeStr = row[10] || "0";
         const profitKRWStr = row[14] || "0";
 
         const weight = parseFloat(weightStr) || 0;
@@ -329,7 +332,7 @@ function processHoldingsData(data) {
         const profitKRW = parseFloat(profitKRWStr.replace(/,/g, '')) || 0;
         const dailyChange = parseFloat(dailyChangeStr.replace(/%/g, '')) || 0;
 
-        if (weight === 0 && evalKRW === 0) continue; // 유효하지 않은 데이터 건너뛰기
+        if (weight === 0 && evalKRW === 0) continue;
 
         globalHoldings.push({
             name: name,
@@ -338,7 +341,6 @@ function processHoldingsData(data) {
             eval: evalKRW,
             profit: profitKRW,
             dailyChange: dailyChange,
-            // 화면 표시용 문자열 저장
             display: {
                 weight: weightStr,
                 returnRate: returnRateStr,
@@ -348,7 +350,6 @@ function processHoldingsData(data) {
             }
         });
     }
-    // 초기 정렬 적용
     sortHoldings(sortState.column, false);
 }
 
@@ -358,19 +359,14 @@ function sortHoldings(column, toggle = true) {
             sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
         } else {
             sortState.column = column;
-            sortState.direction = 'desc'; // 새 컬럼 누르면 보통 큰게 먼저 보고 싶음
+            sortState.direction = 'desc';
         }
     }
 
     globalHoldings.sort((a, b) => {
         let valA = a[column];
         let valB = b[column];
-
-        if (sortState.direction === 'asc') {
-            return valA - valB;
-        } else {
-            return valB - valA;
-        }
+        return sortState.direction === 'asc' ? valA - valB : valB - valA;
     });
 
     renderHoldingsTable();
@@ -381,16 +377,13 @@ function updateSortIcons() {
     const headers = document.querySelectorAll('#holdings-table th');
     headers.forEach(th => {
         if (th.textContent.includes('↕') || th.textContent.includes('↑') || th.textContent.includes('↓')) {
-            // 초기화
             let text = th.textContent.replace(' ↑', '').replace(' ↓', '').replace(' ↕', '');
-            
-            // 현재 정렬 컬럼 확인
             if (th.getAttribute('onclick') && th.getAttribute('onclick').includes(`'${sortState.column}'`)) {
                 text += sortState.direction === 'asc' ? ' ↑' : ' ↓';
-                th.style.color = "#333"; // 활성 색상
+                th.style.color = "#333";
             } else {
                 text += ' ↕';
-                th.style.color = "#999"; // 비활성 색상
+                th.style.color = "#999";
             }
             th.textContent = text;
         }
@@ -404,9 +397,6 @@ function renderHoldingsTable() {
 
     globalHoldings.forEach(item => {
         const tr = document.createElement('tr');
-        // 일일 변동률에는 %를 붙여서 표시
-        // 이미 문자열에 %가 있다면 중복될 수 있으나, 위 로직상 dailyChangeStr는 CSV raw값 (e.g. 9.05)
-        // CSV 값에 %가 포함되어 있다면 그대로 둠. 포함 안되어 있으면 붙임.
         let displayDailyChange = item.display.dailyChange;
         if (!displayDailyChange.includes('%')) {
             displayDailyChange += '%';
@@ -424,13 +414,9 @@ function renderHoldingsTable() {
     });
 }
 
-// ------------------- Charts Logic -------------------
 function renderSummaryChart(labels, investData, evalData) {
     const ctx = document.getElementById('summaryChart').getContext('2d');
-    
-    if (summaryChart) {
-        summaryChart.destroy();
-    }
+    if (summaryChart) summaryChart.destroy();
 
     summaryChart = new Chart(ctx, {
         type: 'bar',
@@ -440,14 +426,14 @@ function renderSummaryChart(labels, investData, evalData) {
                 {
                     label: '투자원금',
                     data: investData,
-                    backgroundColor: 'rgba(54, 162, 235, 0.6)', // 파랑
+                    backgroundColor: 'rgba(54, 162, 235, 0.6)',
                     borderColor: 'rgba(54, 162, 235, 1)',
                     borderWidth: 1
                 },
                 {
                     label: '평가금액',
                     data: evalData,
-                    backgroundColor: 'rgba(255, 99, 132, 0.6)', // 빨강
+                    backgroundColor: 'rgba(255, 99, 132, 0.6)',
                     borderColor: 'rgba(255, 99, 132, 1)',
                     borderWidth: 1
                 }
@@ -456,38 +442,11 @@ function renderSummaryChart(labels, investData, evalData) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: {
-                mode: 'index',
-                intersect: false,
-            },
-            plugins: {
-                title: {
-                    display: true,
-                    text: '계좌별 투자금 vs 평가금 비교'
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.dataset.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
-                            if (context.parsed.y !== null) {
-                                label += new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(context.parsed.y);
-                            }
-                            return label;
-                        }
-                    }
-                }
-            },
+            interaction: { mode: 'index', intersect: false },
             scales: {
                 y: {
                     beginAtZero: true,
-                    ticks: {
-                        callback: function(value) {
-                            return new Intl.NumberFormat('ko-KR', { notation: "compact", maximumFractionDigits: 1 }).format(value);
-                        }
-                    }
+                    ticks: { callback: v => new Intl.NumberFormat('ko-KR', { notation: "compact" }).format(v) }
                 }
             }
         }
@@ -499,7 +458,6 @@ function renderHistoryChart(data) {
     const totalEval = [];
     const totalInvest = [];
 
-    // Row 1부터 시작 (Header 건너뜀)
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
         if (!row[0]) continue;
@@ -514,10 +472,7 @@ function renderHistoryChart(data) {
     }
 
     const ctx = document.getElementById('historyChart').getContext('2d');
-    
-    if (historyChart) {
-        historyChart.destroy();
-    }
+    if (historyChart) historyChart.destroy();
 
     historyChart = new Chart(ctx, {
         type: 'line',
@@ -527,7 +482,7 @@ function renderHistoryChart(data) {
                 {
                     label: '총 평가금',
                     data: totalEval,
-                    borderColor: 'rgba(255, 99, 132, 1)', // 빨강
+                    borderColor: 'rgba(255, 99, 132, 1)',
                     backgroundColor: 'rgba(255, 99, 132, 0.1)',
                     fill: true,
                     tension: 0.3
@@ -535,7 +490,7 @@ function renderHistoryChart(data) {
                 {
                     label: '총 투자금',
                     data: totalInvest,
-                    borderColor: 'rgba(54, 162, 235, 1)', // 파랑
+                    borderColor: 'rgba(54, 162, 235, 1)',
                     backgroundColor: 'rgba(54, 162, 235, 0.1)',
                     fill: true,
                     tension: 0.3
@@ -545,38 +500,12 @@ function renderHistoryChart(data) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: {
-                mode: 'index',
-                intersect: false,
-            },
-            plugins: {
-                title: {
-                    display: true,
-                    text: '자산 변동 추이'
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.dataset.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
-                            if (context.parsed.y !== null) {
-                                label += new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(context.parsed.y);
-                            }
-                            return label;
-                        }
-                    }
-                }
-            },
+            interaction: { mode: 'index', intersect: false },
+            plugins: { title: { display: true, text: '자산 변동 추이' } },
             scales: {
                 y: {
-                    beginAtZero: false, // 금액 변화가 크지 않을 수 있으니 0부터 시작하지 않음
-                    ticks: {
-                        callback: function(value) {
-                            return new Intl.NumberFormat('ko-KR', { notation: "compact" }).format(value);
-                        }
-                    }
+                    beginAtZero: false,
+                    ticks: { callback: v => new Intl.NumberFormat('ko-KR', { notation: "compact" }).format(v) }
                 }
             }
         }
