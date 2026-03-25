@@ -52,6 +52,7 @@ let globalHoldings = [];
 let sortState = { column: 'weight', direction: 'desc' };
 let summaryChart = null;
 let historyChart = null;
+let bubbleChart = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     fetchData();
@@ -223,6 +224,7 @@ function processHoldingsData(data) {
         });
     });
     sortHoldings(sortState.column, false);
+    renderBubbleChart(globalHoldings);
 }
 
 function sortHoldings(column, toggle = true) {
@@ -290,5 +292,64 @@ function renderHistoryChart(data) {
         type: 'line',
         data: { labels: dates, datasets: [{ label: '총 평가금', data: evals, borderColor: 'rgba(255, 99, 132, 1)', backgroundColor: 'rgba(255, 99, 132, 0.1)', fill: true, tension: 0.3 }, { label: '총 투자금', data: invests, borderColor: 'rgba(54, 162, 235, 1)', backgroundColor: 'rgba(54, 162, 235, 0.1)', fill: true, tension: 0.3 }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: '자산 변동 추이' } }, scales: { y: { beginAtZero: false, ticks: { callback: v => new Intl.NumberFormat('ko-KR', { notation: "compact" }).format(v) } } } }
+    });
+}
+
+function renderBubbleChart(holdings) {
+    const canvas = document.getElementById('bubbleChart');
+    if (!canvas || !holdings || holdings.length === 0) return;
+
+    const bubbleData = holdings.map(item => ({
+        label: item.name,
+        data: [{
+            x: item.dailyChange,
+            y: item.returnRate,
+            r: Math.sqrt(item.eval / 100000) * 0.8,
+            eval: item.eval // 툴팁 표시용 원본 데이터 보존
+        }]
+    }));
+
+    if (bubbleChart) bubbleChart.destroy();
+    bubbleChart = new Chart(canvas.getContext('2d'), {
+        type: 'bubble',
+        data: { datasets: bubbleData },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const label = context.dataset.label || '';
+                            const d = context.raw;
+                            const evalStr = new Intl.NumberFormat('ko-KR').format(Math.round(d.eval)) + '원';
+                            return [
+                                `${label}`,
+                                ` 평가액: ${evalStr}`,
+                                ` 일 변동률: ${d.x}%`,
+                                ` 총 수익률: ${d.y}%`
+                            ];
+                        }
+                    }
+                },
+                legend: { display: false }
+            },
+            scales: {
+                x: {
+                    title: { display: true, text: '일일 변동률 (%)' },
+                    grid: {
+                        color: (ctx) => ctx.tick && ctx.tick.value === 0 ? 'rgba(0, 0, 0, 0.4)' : 'rgba(200, 200, 200, 0.2)',
+                        lineWidth: (ctx) => ctx.tick && ctx.tick.value === 0 ? 2 : 1
+                    }
+                },
+                y: {
+                    title: { display: true, text: '전체 수익률 (%)' },
+                    grid: {
+                        color: (ctx) => ctx.tick && ctx.tick.value === 0 ? 'rgba(0, 0, 0, 0.4)' : 'rgba(200, 200, 200, 0.2)',
+                        lineWidth: (ctx) => ctx.tick && ctx.tick.value === 0 ? 2 : 1
+                    }
+                }
+            }
+        }
     });
 }
