@@ -1,0 +1,12 @@
+{
+  "name": "my-stock-dashboard",
+  "version": "1.0.0",
+  "description": "Stock Dashboard with Google Sheets Integration",
+  "scripts": {
+    "start": "npx serve .",
+    "dev": "python3 -m http.server 8000"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
