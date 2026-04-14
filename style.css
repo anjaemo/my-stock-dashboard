@@ -248,6 +248,14 @@ tr:hover { background-color: #fafafa; }
     .transaction-grid {
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     }
+    .mdd-result-layout {
+        flex-direction: column;
+        gap: 20px;
+    }
+    .mdd-main-area, .mdd-sidebar {
+        width: 100%;
+        min-width: 0;
+    }
 }
 
 @media (max-width: 600px) {
