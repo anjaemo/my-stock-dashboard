@@ -1,125 +1,144 @@
-/**
- * 🐶 바둑이 주식 대시보드 전용 GAS 커넥터 (v2.0)
- * 기능: 
- * 1. Yahoo Finance 데이터 프록시 (MDD 분석용 CORS 회피)
- * 2. 시장 지수 갱신 트리거 (Z1 셀 타임스탬프)
- * 3. 매매 기록 저장 (Transactions 시트)
- */
+    /**
+     * 🐶 바둑이 주식 대시보드 - GAS 최종 통합 버전 (프록시 및 계좌 통합 복구)
+     */
 
-function doPost(e) {
-    var output;
+    function doPost(e) {
     try {
-        // 1. 요청 데이터 파싱
-        var jsonData = e.postData.contents;
-        var params = JSON.parse(jsonData);
-        var command = params.command;
-
-        // --- [기능 1] Yahoo Finance 프록시 (MDD 분석 전용) ---
-        if (command === "proxy_yahoo") {
-            var yahooUrl = params.url;
-
-            // 구글 서버의 IP로 야후 데이터를 직접 가져와서 브라우저의 CORS 차단을 우회함
-            var fetchOptions = {
-                muteHttpExceptions: true,
-                headers: {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                    "Accept": "application/json, text/plain, */*",
-                    "Accept-Language": "en-US,en;q=0.9",
-                    "Referer": "https://finance.yahoo.com/"
-                }
-            };
-
-            var response = UrlFetchApp.fetch(yahooUrl, fetchOptions);
-            var responseCode = response.getResponseCode();
-            var contentText = response.getContentText();
-
-            // HTTP 오류 시 상세 메시지 반환
-            if (responseCode !== 200) {
-                return ContentService.createTextOutput(
-                    "GAS Error: Yahoo Finance 요청 실패 (HTTP " + responseCode + "). " +
-                    "티커가 올바른지 확인해주세요. 응답: " + contentText.substring(0, 300)
-                ).setMimeType(ContentService.MimeType.TEXT);
-            }
-
-            // v8 API는 JSON, v7 API는 CSV 반환 - 그대로 전달
-            var mimeType = yahooUrl.includes("/v8/")
-                ? ContentService.MimeType.JSON
-                : ContentService.MimeType.TEXT;
-
-            return ContentService.createTextOutput(contentText).setMimeType(mimeType);
+        var data;
+        if (e.postData && e.postData.contents) {
+        data = JSON.parse(e.postData.contents);
+        } else {
+        data = e.parameter;
+        }
+        
+        // 💡 1. [프록시/명령 처리] 계좌 기록보다 먼저 확인
+        // script.js의 fetchWithFallback은 { command: "proxy_yahoo", url: "..." } 형식을 사용함
+        if (data.command === "proxy_yahoo" && data.url) {
+        return ContentService.createTextOutput(UrlFetchApp.fetch(data.url).getContentText());
+        }
+        
+        if (data.command === "refresh_market") {
+        var ss = SpreadsheetApp.openById("1YNMIqwg6mJjUFGtWEMRSPKNCJGcPMfKgyg_S0gkEVFw"); 
+        updateMarketData(ss);
+        return createResponse("Market Data Refreshed");
         }
 
-        // --- [기능 2] 시장 지수 갱신 트리거 ---
-        if (command === "refresh_market") {
-            var ss = SpreadsheetApp.getActiveSpreadsheet();
-            var summarySheet = ss.getSheetByName("Summary");
-            if (summarySheet) {
-                // Summary 시트의 Z1 셀에 현재 시간을 기록하여 GOOGLEFINANCE 함수 등의 재계산을 유도
-                summarySheet.getRange("Z1").setValue(new Date().getTime());
-            }
-            return ContentService.createTextOutput("Market refresh triggered.")
-                .setMimeType(ContentService.MimeType.TEXT);
+        if (data.url) {
+        return ContentService.createTextOutput(UrlFetchApp.fetch(data.url).getContentText());
         }
 
-        // --- [기능 3] 매매 기록 저장 (Transactions) ---
-        var ss = SpreadsheetApp.getActiveSpreadsheet();
-        var transSheet = ss.getSheetByName("Transactions");
+        // 💡 2. [매매 기록 저장] account 정보가 필요한 요청
+        var accountMap = {
+        "AJM": "1YNMIqwg6mJjUFGtWEMRSPKNCJGcPMfKgyg_S0gkEVFw",
+        "AJMjr": "1aN52-xHUQm5ZmQOk6I9HLTVxCKMeMuYQoGcNlxCEIEI",
+        "JJG-w-AJM": "1vdWQhHIEHk2mZHPCDzDnbDhYoqYCFE7m8LRk8xaXOUs",
+        "JJG-w-KKO": "1Q0q2v60zcf-mfuQS8MiO1pBfSFo3YxVIZ7yo2TWBX3s",
+        "JJG-w-AJMjr": "1m2zurh2hmMgYOWMo-t7BNagu2AkyK2EoygdMS594mj0",
+        "JJG-w-AJM-ISA": "1Q1Sw-Z2doUvJNw1bAh351b8ZR9UFVbtnAsg5M6Js7sg",
+        "JJG-w-KKO-ISA": "1GRz4BgS0SF5bsl7D2oo9z0BNkvqob9b2Mzd3QYVrVjY"
+        };
 
-        if (!transSheet) {
-            return ContentService.createTextOutput("Error: 'Transactions' sheet not found.")
-                .setMimeType(ContentService.MimeType.TEXT);
+        var ssId = accountMap[data.account];
+        if (!ssId) {
+        // command나 url이 없는 일반 POST 요청인데 account도 없다면 에러
+        throw new Error("알 수 없는 계좌입니다: " + data.account);
+        }
+        
+        var ss = SpreadsheetApp.openById(ssId);
+        var sheet = ss.getSheetByName("record") || ss.getSheetByName("거래기록");
+
+        if (!sheet) throw new Error("'record' 또는 '거래기록' 시트를 찾을 수 없습니다.");
+
+        var lastRow = sheet.getLastRow();
+        var nextRow = lastRow + 1;
+
+        var stockName = data.stockName || "";
+        var stockCode = data.stockCode || "";
+        var type = data.type || "기타";
+        var price = parseFloat(data.price) || 0;
+        var qty = parseFloat(data.quantity) || 0;
+
+        if (type === "현금입금" || type === "현금출금") {
+        stockName = "현금"; stockCode = "현금";
         }
 
-        // 시트 컬럼 순서:
-        // A=날짜, B=종목(종목명), C=종목코드, D=거래통화, E=거래종류,
-        // F=거래가격(원), G=거래가격(현지통화), H=수량
-        //
-        // 거래 종류별 B, C열 규칙:
-        //   매수/매도   → B=종목명(예: SPYM),        C=종목코드(예: NYSEARCA:SPYM)
-        //   배당금      → B="현금"(고정),             C=배당 종목 티커(예: QQQM)
-        //   현금입금/출금 → B="현금"(고정),           C=비워둠
-        transSheet.appendRow([
-            params.date,                // A: 날짜
-            params.stockName || "",     // B: 종목명 또는 "현금"
-            params.stockCode || "",     // C: 종목코드 또는 배당 종목명 (없으면 빈칸)
-            params.currency || "",      // D: 거래통화 (KRW / USD)
-            params.type || "",          // E: 거래종류 (매수/매도/배당금/현금입금/현금출금)
-            "",                         // F: 거래가격(원) - 시트 수식으로 자동 계산
-            params.price || 0,          // G: 단가(현지통화)
-            params.quantity || 0        // H: 수량
-        ]);
-
-        // G열 단가 숫자 포맷 적용: USD → 소수점 2자리, KRW → 소수점 없음
-        var lastRow = transSheet.getLastRow();
-        var priceCell = transSheet.getRange(lastRow, 7); // G열 = 7번째 열
-        var priceFormat = (params.currency === "USD") ? "#,##0.00" : "#,##0";
-        priceCell.setNumberFormat(priceFormat);
-
-        // F열, I열: 바로 위 행의 수식을 복사 (상대참조가 새 행에 맞게 자동 조정됨)
-        if (lastRow > 2) { // 헤더 행(1행) 바로 아래가 아닌 경우에만
-            var pasteType = SpreadsheetApp.CopyPasteType.PASTE_FORMULA;
-            transSheet.getRange(lastRow - 1, 6).copyTo(transSheet.getRange(lastRow, 6), pasteType, false); // F열
-            transSheet.getRange(lastRow - 1, 9).copyTo(transSheet.getRange(lastRow, 9), pasteType, false); // I열
+        if (type.includes("매도") || type.includes("출금")) {
+        qty = -Math.abs(qty);
         }
 
-        return ContentService.createTextOutput("Success: Transaction recorded.")
-            .setMimeType(ContentService.MimeType.TEXT);
+        if (["현금입금", "현금출금", "배당금"].includes(type)) {
+        if (price === 0) {
+            price = Math.abs(qty);
+            qty = (qty < 0 ? -1 : 1);
+        }
+        }
 
+        var total = price * qty;
 
+        var rowData = [
+        data.date,          // A: 날짜
+        stockName,          // B: 종목명
+        stockCode,          // C: 종목코드
+        data.currency,      // D: 통화
+        type,               // E: 종류
+        (data.currency == "KRW" ? price : ""), // F: 가격원
+        price,              // G: 가격외
+        qty,                // H: 수량
+        (data.currency == "KRW" ? total : ""), // I: 총액원
+        total,              // J: 총액외
+        "",                 // K: 보유수량
+        ""                  // L: 환율
+        ];
 
+        sheet.getRange(nextRow, 1, 1, 12).setValues([rowData]);
+
+        if (data.currency == "USD") {
+        var rateCell = sheet.getRange(nextRow, 12);
+        rateCell.setFormula('=GOOGLEFINANCE("CURRENCY:USDKRW")');
+        SpreadsheetApp.flush();
+        rateCell.setValue(rateCell.getValue());
+        }
+
+        if (lastRow > 1) {
+        sheet.getRange(lastRow, 11).copyTo(sheet.getRange(nextRow, 11));
+        var maxCols = sheet.getMaxColumns();
+        if (maxCols >= 13) {
+            sheet.getRange(lastRow, 13, 1, maxCols - 12).copyTo(sheet.getRange(nextRow, 13));
+        }
+        if (data.currency == "USD") {
+            sheet.getRange(lastRow, 6).copyTo(sheet.getRange(nextRow, 6));
+            sheet.getRange(lastRow, 9).copyTo(sheet.getRange(nextRow, 9));
+        }
+        }
+
+        SpreadsheetApp.flush();
+        return createResponse("Success: Record Saved to " + data.account);
 
     } catch (err) {
-        // 예외 발생 시 상세 오류 메시지 반환 (클라이언트 디버깅용)
-        return ContentService.createTextOutput("GAS Error: " + err.toString())
-            .setMimeType(ContentService.MimeType.TEXT);
+        return createResponse("Error: " + err.toString());
     }
-}
+    }
 
-/**
- * 브라우저에서 URL로 직접 접속(GET)했을 때 서버 상태 확인용
- */
-function doGet(e) {
-    var ssUrl = SpreadsheetApp.getActiveSpreadsheet().getUrl();
-    return ContentService.createTextOutput("🐶 바둑이 대시보드 GAS 커넥터가 정상 작동 중입니다!\n\n연결된 시트: " + ssUrl)
-        .setMimeType(ContentService.MimeType.TEXT);
-}
+    function doGet(e) {
+    if (e && e.parameter && e.parameter.url) {
+        return ContentService.createTextOutput(UrlFetchApp.fetch(e.parameter.url).getContentText()).setMimeType(ContentService.MimeType.TEXT);
+    }
+    return createResponse("바둑이 대시보드 연결 성공! 🐾 (계좌 통합 버전)");
+    }
+
+    function createResponse(msg) {
+    return ContentService.createTextOutput(msg).setMimeType(ContentService.MimeType.TEXT);
+    }
+
+    function updateMarketData(ss) {
+    var sheet = ss.getSheetByName("Summary");
+    if (!sheet) return;
+    sheet.getRange("Z1").setValue(new Date());
+    }
+
+    function authTest() {
+    Logger.log("권한 체크 완료! 🐾");
+    }
+    function forceAuth() {
+    UrlFetchApp.fetch("https://www.google.com");
+    }

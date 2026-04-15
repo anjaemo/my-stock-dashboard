@@ -6,7 +6,7 @@ const CONFIG = {
     holdingsURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=58859590&single=true&output=csv",
     historyURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=1345768416&single=true&output=csv",
     snapshotURL: "data_snapshot.json",
-    gasURL: "https://script.google.com/macros/s/AKfycbx-sPk-8Dc7umEi0EGOJnRnuTiS1_Od9v6QvvZqOEsb_LyNXaAChOzaTEoIctSAUobffQ/exec"
+    gasURL: "https://script.google.com/macros/s/AKfycbzG5kiJsXFUghWs46b672yIPUr-E5a9oH_DwTMeWYz6LEtN1DHq_ZKCJGMIlV_jZKCNiA/exec"
 };
 
 const PROXIES = [
@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function fetchData(shouldRefreshMarket = true) {
     updateTimestamp(null, "⏳ 데이터 확인 중...");
-    
+
     try {
         // 1. 데이터 병렬 로드 시도
         const [summaryRes, holdingsRes, historyRes] = await Promise.all([
@@ -123,7 +123,7 @@ async function fetchData(shouldRefreshMarket = true) {
         if (summaryRes && summaryRes.data) {
             renderSummary(summaryRes.data, document.querySelector('#summary-table tbody'));
         }
-        
+
         if (holdingsRes && holdingsRes.data) {
             processHoldingsData(holdingsRes.data);
         }
@@ -137,18 +137,18 @@ async function fetchData(shouldRefreshMarket = true) {
 
     } catch (err) {
         console.error("실시간 데이터 로드 실패, 스냅샷 시도:", err);
-        
+
         try {
             const response = await fetch(CONFIG.snapshotURL);
             const snapshot = await response.json();
-            
+
             if (snapshot.summary) {
                 renderSummary(snapshot.summary, document.querySelector('#summary-table tbody'));
             }
             if (snapshot.holdings) {
                 processHoldingsData(snapshot.holdings);
             }
-            
+
             updateTimestamp(false, "Snapshot (오프라인)");
         } catch (snapErr) {
             console.error("스냅샷 로드도 실패:", snapErr);
@@ -172,7 +172,7 @@ async function fetchSP500Data() {
 
     try {
         statusText.textContent = "⏳ 시가총액 상위 100 순위 확인 중...";
-        
+
         // 1. S&P 500 시가총액 상위 100 목록 가져오기 (야후 스크리너 API)
         // query2와 query1 두 곳을 순차적으로 시도합니다.
         const endpoints = [
@@ -219,7 +219,7 @@ async function fetchSP500Data() {
         top100Tickers.forEach((ticker, index) => {
             const data = quoteMap[ticker];
             const drawdown = data.high52 ? ((data.price / data.high52 - 1) * 100).toFixed(2) : "0.00";
-            
+
             const tr = document.createElement('tr');
             tr.onclick = () => window.open(`https://finance.yahoo.com/quote/${ticker}`, '_blank');
             tr.innerHTML = `
@@ -245,14 +245,14 @@ async function fetchSP500Data() {
         for (let i = 0; i < top100Tickers.length; i += batchSize) {
             const batch = top100Tickers.slice(i, i + batchSize);
             statusText.textContent = `⏳ 기술 분석 중... (${i + batch.length}/100)`;
-            
+
             await Promise.all(batch.map(async (ticker) => {
                 try {
                     // RSI용 데이터는 최근 1개월치만 가져옴
                     const chartURL = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1mo`;
                     const result = await fetchWithFallback(chartURL, true);
                     const history = parseYahooData(result, ticker);
-                    
+
                     if (history && history.length >= 14) {
                         const rsiValue = calculateRSIValue(history.map(h => h.close));
                         const rsiCell = document.getElementById(`rsi-${ticker.replace(/[^a-zA-Z]/g, '')}`);
@@ -282,7 +282,7 @@ async function fetchSP500Data() {
  */
 function calculateRSIValue(closes, period = 14) {
     if (closes.length <= period) return 50;
-    
+
     let gains = 0;
     let losses = 0;
 
@@ -310,7 +310,7 @@ async function fetchWithFallback(targetUrl, isYahoo = false) {
 
             if (response.ok) {
                 const text = await response.text();
-                
+
                 if (text.startsWith("GAS Error:")) {
                     console.warn("GAS 내부 오류:", text);
                 } else if (text.includes('"chart"') || text.includes('"result"')) {
@@ -433,7 +433,7 @@ async function analyzeMDD() {
 
         const stats = calculateRecoveryStats(processedData);
         const currentDrawdown = processedData[processedData.length - 1].drawdown;
-        
+
         renderMDDCharts(ticker, processedData, stats, currentDrawdown);
         renderMDDTable(stats, currentDrawdown);
         updateMDDSummary(ticker, mdd, processedData, currentDrawdown);
@@ -506,9 +506,9 @@ function renderMDDCharts(ticker, data, stats, currentDrawdown = 0) {
         type: 'bar',
         data: {
             labels: stats.map(s => `-${s.level}%`),
-            datasets: [{ 
-                label: '복귀 확률 (%)', 
-                data: stats.map(s => s.prob), 
+            datasets: [{
+                label: '복귀 확률 (%)',
+                data: stats.map(s => s.prob),
                 backgroundColor: backgroundColors,
                 borderColor: borderColors,
                 borderWidth: borderWidths
@@ -526,14 +526,14 @@ function renderMDDCharts(ticker, data, stats, currentDrawdown = 0) {
 function renderMDDTable(stats, currentDrawdown = 0) {
     const tbody = document.querySelector('#recovery-table tbody');
     tbody.innerHTML = '';
-    
+
     // 현재 낙폭이 속한 레벨 계산
     const currentLevel = Math.ceil(Math.abs(currentDrawdown) / 5) * 5;
 
     stats.forEach(s => {
         const prob = parseFloat(s.prob);
         let styles = [];
-        
+
         // 1. 확률에 따른 배경색 설정
         if (prob >= 100) styles.push('background-color: rgba(255, 107, 107, 0.15)');
         else if (prob >= 90) styles.push('background-color: rgba(255, 159, 64, 0.15)');
@@ -546,7 +546,7 @@ function renderMDDTable(stats, currentDrawdown = 0) {
 
         const tr = document.createElement('tr');
         if (styles.length > 0) tr.setAttribute('style', styles.join('; '));
-        
+
         tr.innerHTML = `<td>-${s.level}%</td><td>${s.prob}%</td><td>${s.count}일</td><td>$${s.price}</td>`;
         tbody.appendChild(tr);
     });
@@ -707,28 +707,28 @@ function renderSummaryChart(labels, investData, evalData) {
 function renderHistoryChart(data) {
     const canvas = document.getElementById('historyChart'); if (!canvas || !data) return;
     const dates = [], evals = [], invests = [];
-    
+
     // 데이터 파싱 및 단위 변환 (원 -> 천만원)
     data.slice(1).forEach(row => {
         if (!row[0]) return;
-        dates.push(row[0]); 
+        dates.push(row[0]);
         // 10,000,000으로 나누어 천만원 단위로 변환
-        evals.push(parseSafeFloat(row[1]) / 10000000); 
+        evals.push(parseSafeFloat(row[1]) / 10000000);
         invests.push(parseSafeFloat(row[2]) / 10000000);
     });
 
     if (historyChart) historyChart.destroy();
     historyChart = new Chart(canvas.getContext('2d'), {
         type: 'line',
-        data: { 
-            labels: dates, 
+        data: {
+            labels: dates,
             datasets: [
-                { label: '평가금 (천만)', data: evals, borderColor: '#e53935', backgroundColor: 'rgba(229, 57, 53, 0.1)', fill: false, tension: 0.1, pointRadius: 2 }, 
+                { label: '평가금 (천만)', data: evals, borderColor: '#e53935', backgroundColor: 'rgba(229, 57, 53, 0.1)', fill: false, tension: 0.1, pointRadius: 2 },
                 { label: '투자금 (천만)', data: invests, borderColor: '#1e88e5', backgroundColor: 'rgba(30, 136, 229, 0.1)', fill: false, tension: 0.1, pointRadius: 2 }
-            ] 
+            ]
         },
-        options: { 
-            responsive: true, 
+        options: {
+            responsive: true,
             maintainAspectRatio: false,
             scales: {
                 y: {
@@ -739,7 +739,7 @@ function renderHistoryChart(data) {
             plugins: {
                 tooltip: {
                     callbacks: {
-                        label: function(context) {
+                        label: function (context) {
                             let label = context.dataset.label.split(' ')[0] || '';
                             if (label) label += ': ';
                             if (context.parsed.y !== null) {
@@ -768,9 +768,9 @@ function renderBubbleChart(holdings) {
     bubbleChart = new Chart(canvas.getContext('2d'), {
         type: 'bubble',
         data: { datasets: bubbleData },
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false, 
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
             scales: {
                 x: {
                     title: { display: true, text: '일일 변동률 (%)', font: { weight: 'bold' } },
@@ -787,11 +787,11 @@ function renderBubbleChart(holdings) {
                     }
                 }
             },
-            plugins: { 
+            plugins: {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        label: function(context) {
+                        label: function (context) {
                             const item = context.raw;
                             return `${context.dataset.label}: 수익률 ${item.y.toFixed(2)}%, 일변동 ${item.x.toFixed(2)}%`;
                         }
@@ -844,42 +844,39 @@ async function handleTransactionSubmit(e) {
 
     const formData = {
         date: document.getElementById('input-date').value,
-        stockName,   // B열: 종목명 또는 '현금'
-        stockCode,   // C열: 종목코드 또는 배당 종목 티커
+        stockName: stockName,
+        stockCode: stockCode,
         currency: document.getElementById('currency-select').value,
-        type,
-        quantity: document.getElementById('input-quantity').value,
-        price: document.getElementById('input-price').value || 0,
+        type: type,
+        quantity: parseFloat(document.getElementById('input-quantity').value) || 0,
+        price: parseFloat(document.getElementById('input-price').value) || 0,
         account: document.getElementById('account-select').value
     };
 
+    console.log('--- [STEP 1] 전송 데이터 확인 ---');
+    console.table(formData);
+
     try {
         submitBtn.disabled = true;
-        submitBtn.textContent = '⏳ 저장 중...';
-        
-        // URLSearchParams를 사용하여 폼 데이터 형식으로 전송 (GAS 호환성 향상)
-        const params = new URLSearchParams();
-        for (const key in formData) {
-            params.append(key, formData[key]);
-        }
+        submitBtn.textContent = '⏳ 구글 시트 전송 중...';
 
-        console.log('Sending trade record to GAS:', formData);
-        
-        await fetch(CONFIG.gasURL, { 
-            method: 'POST', 
-            mode: 'no-cors', 
-            body: params 
+        // JSON 데이터를 POST로 전송
+        const response = await fetch(CONFIG.gasURL, {
+            method: 'POST',
+            mode: 'no-cors', // CORS 제한 회피를 위해 no-cors 유지
+            cache: 'no-cache',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
         });
 
-        statusDiv.textContent = '✅ 기록 완료! 멍!';
-        statusDiv.style.color = '#2e7d32';
+        console.log('--- [STEP 2] 전송 완료 (no-cors 모드) ---');
+        statusDiv.textContent = '✅ 전송 완료! 시트를 확인해 주세요. 🐾'; statusDiv.style.color = '#2e7d32';
         document.getElementById('transaction-form').reset();
         document.getElementById('input-date').value = new Date().toISOString().split('T')[0];
-        
-        // 데이터 즉시 새로고침 요청 (JSON command)
-        setTimeout(() => { 
-            statusDiv.textContent = ''; 
-            fetchData(false); 
+
+        setTimeout(() => {
+            statusDiv.textContent = '';
+            fetchData(false);
         }, 2000);
 
     } catch (err) {
@@ -893,10 +890,10 @@ async function handleTransactionSubmit(e) {
 }
 
 async function requestMarketRefresh() {
-    try { 
+    try {
         const params = new URLSearchParams({ command: "refresh_market" });
-        fetch(CONFIG.gasURL, { method: 'POST', mode: 'no-cors', body: params }); 
-    } catch (e) { 
+        fetch(CONFIG.gasURL, { method: 'POST', mode: 'no-cors', body: params });
+    } catch (e) {
         console.warn('Market refresh request failed:', e);
     }
 }
