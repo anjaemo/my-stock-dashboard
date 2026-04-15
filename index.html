@@ -21,7 +21,6 @@
         <!-- 탭 네비게이션 -->
         <nav class="tabs">
             <button class="tab-btn active" onclick="openTab(event, 'portfolio-tab')">📊 포트폴리오</button>
-            <button class="tab-btn" onclick="openTab(event, 'heatmap-tab')">🔥 히트맵</button>
             <button class="tab-btn" onclick="openTab(event, 'mdd-tab')">📉 MDD 분석</button>
         </nav>
 
@@ -248,80 +247,6 @@
                         <input type="text" id="mdd-ticker" placeholder="티커를 입력하세요" value="SPY">
                     </div>
                     <div class="input-group">
-                        <label for="mdd-start-date">시작 날짜</label>
-                        <input type="date" id="mdd-start-date">
-                    </div>
-                    <div class="input-group">
-                        <label for="mdd-end-date">종료 날짜</label>
-                        <input type="date" id="mdd-end-date">
-                    </div>
-                    <div class="input-group flex-bottom">
-                        <button id="mdd-analyze-btn" class="analyze-button">🐾 분석 실행</button>
-                    </div>
-                </div>
-            </section>
-
-            <div class="mdd-result-layout">
-                <div class="mdd-main-area">
-                    <section class="card">
-                        <h2>📉 MDD 추이 및 낙폭 그래프</h2>
-                        <div class="chart-container" style="position: relative; height:400px;">
-                            <canvas id="mddChart"></canvas>
-                        </div>
-                    </section>
-                    
-                    <section class="card">
-                        <h2>📊 낙폭별 회복 확률 (Recovery Probability)</h2>
-                        <div class="chart-container" style="position: relative; height:350px;">
-                            <canvas id="recoveryChart"></canvas>
-                        </div>
-                    </section>
-                </div>
-
-                <aside class="mdd-sidebar">
-                    <section class="card mdd-summary-card">
-                        <h2>📋 분석 요약</h2>
-                        <div id="mdd-summary-content" class="mdd-summary-content">
-                            분석을 실행해주세요!
-                        </div>
-                    </section>
-
-                    <section class="card mdd-table-card">
-                        <h2>📑 MDD 회복 통계 (5% 단위)</h2>
-                        <div class="table-wrapper">
-                            <table id="recovery-table">
-                                <thead>
-                                    <tr>
-                                        <th>MDD 값 (%)</th>
-                                        <th>복귀확률 (%)</th>
-                                        <th>발생횟수 (일)</th>
-                                        <th>해당 주가</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr><td colspan="4" style="text-align:center;">데이터 없음</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
-                </aside>
-            </div>
-        </div>
-    </div>
-
-    <!-- Chart.js Library -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- CSV Parser Library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
-    <!-- 플로팅 새로고침 버튼 -->
-    <button id="refresh-fab" class="fab-button" title="데이터 새로고침">
-        <span class="fab-icon">🐾</span>
-        <span class="fab-text">갱신</span>
-    </button>
-
-    <script src="script.js"></script>
-</body>
-</html> <div class="input-group">
                         <label for="mdd-start-date">시작 날짜</label>
                         <input type="date" id="mdd-start-date">
                     </div>

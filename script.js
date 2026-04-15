@@ -6,7 +6,7 @@ const CONFIG = {
     holdingsURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=58859590&single=true&output=csv",
     historyURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=1345768416&single=true&output=csv",
     snapshotURL: "data_snapshot.json",
-    gasURL: "https://script.google.com/macros/s/AKfycbzTwfRBu2L2EA4r_-9MZVYgwyxmray_Q-qOANo0pkaLEY5Gr8LgIV9h52DxR_7ZfxSZEA/exec"
+    gasURL: "https://script.google.com/macros/s/AKfycbx-sPk-8Dc7umEi0EGOJnRnuTiS1_Od9v6QvvZqOEsb_LyNXaAChOzaTEoIctSAUobffQ/exec"
 };
 
 const PROXIES = [
@@ -856,13 +856,34 @@ async function handleTransactionSubmit(e) {
     try {
         submitBtn.disabled = true;
         submitBtn.textContent = '⏳ 저장 중...';
-        await fetch(CONFIG.gasURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(formData) });
+        
+        // URLSearchParams를 사용하여 폼 데이터 형식으로 전송 (GAS 호환성 향상)
+        const params = new URLSearchParams();
+        for (const key in formData) {
+            params.append(key, formData[key]);
+        }
+
+        console.log('Sending trade record to GAS:', formData);
+        
+        await fetch(CONFIG.gasURL, { 
+            method: 'POST', 
+            mode: 'no-cors', 
+            body: params 
+        });
+
         statusDiv.textContent = '✅ 기록 완료! 멍!';
         statusDiv.style.color = '#2e7d32';
         document.getElementById('transaction-form').reset();
         document.getElementById('input-date').value = new Date().toISOString().split('T')[0];
-        setTimeout(() => { statusDiv.textContent = ''; fetchData(false); }, 2000);
+        
+        // 데이터 즉시 새로고침 요청 (JSON command)
+        setTimeout(() => { 
+            statusDiv.textContent = ''; 
+            fetchData(false); 
+        }, 2000);
+
     } catch (err) {
+        console.error('GAS transaction failed:', err);
         statusDiv.textContent = '❌ 실패: ' + err.message;
         statusDiv.style.color = '#c62828';
     } finally {
@@ -872,5 +893,10 @@ async function handleTransactionSubmit(e) {
 }
 
 async function requestMarketRefresh() {
-    try { fetch(CONFIG.gasURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ command: "refresh_market" }) }); } catch (e) { }
+    try { 
+        const params = new URLSearchParams({ command: "refresh_market" });
+        fetch(CONFIG.gasURL, { method: 'POST', mode: 'no-cors', body: params }); 
+    } catch (e) { 
+        console.warn('Market refresh request failed:', e);
+    }
 }
