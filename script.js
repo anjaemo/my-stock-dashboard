@@ -706,7 +706,7 @@ function renderSummaryChart(labels, investData, evalData) {
 
 function renderHistoryChart(data) {
     const canvas = document.getElementById('historyChart'); if (!canvas || !data) return;
-    const dates = [], evals = [], invests = [];
+    const dates = [], evals = [], invests = [], incomes = [], dividends = [];
 
     // 데이터 파싱 및 단위 변환 (원 -> 천만원)
     data.slice(1).forEach(row => {
@@ -715,6 +715,8 @@ function renderHistoryChart(data) {
         // 10,000,000으로 나누어 천만원 단위로 변환
         evals.push(parseSafeFloat(row[1]) / 10000000);
         invests.push(parseSafeFloat(row[2]) / 10000000);
+        incomes.push(parseSafeFloat(row[3]) / 10000000); // D열
+        dividends.push(parseSafeFloat(row[11]) / 10000000); // L열
     });
 
     if (historyChart) historyChart.destroy();
@@ -724,7 +726,9 @@ function renderHistoryChart(data) {
             labels: dates,
             datasets: [
                 { label: '평가금 (천만)', data: evals, borderColor: '#e53935', backgroundColor: 'rgba(229, 57, 53, 0.1)', fill: false, tension: 0.1, pointRadius: 2 },
-                { label: '투자금 (천만)', data: invests, borderColor: '#1e88e5', backgroundColor: 'rgba(30, 136, 229, 0.1)', fill: false, tension: 0.1, pointRadius: 2 }
+                { label: '투자금 (천만)', data: invests, borderColor: '#1e88e5', backgroundColor: 'rgba(30, 136, 229, 0.1)', fill: false, tension: 0.1, pointRadius: 2 },
+                { label: '수입금 (천만)', data: incomes, borderColor: '#43a047', backgroundColor: 'rgba(67, 160, 71, 0.1)', fill: false, tension: 0.1, pointRadius: 2 },
+                { label: '배당금 (천만)', data: dividends, borderColor: '#fbc02d', backgroundColor: 'rgba(251, 192, 45, 0.1)', fill: false, tension: 0.1, pointRadius: 2 }
             ]
         },
         options: {
