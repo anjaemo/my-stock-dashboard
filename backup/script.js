@@ -1,18 +1,6 @@
 // 🐶 바둑이의 주식 데이터 처리 스크립트
 // 업데이트: 2026-04-09 (탭 인터페이스 및 MDD 분석 기능 추가)
 
-// Chart.js Global Defaults for Dark Theme
-if (window.Chart) {
-    Chart.defaults.color = '#94a3b8';
-    Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.1)';
-    Chart.defaults.font.family = "'Pretendard', 'Inter', sans-serif";
-    Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15, 23, 42, 0.9)';
-    Chart.defaults.plugins.tooltip.titleColor = '#f1f5f9';
-    Chart.defaults.plugins.tooltip.bodyColor = '#f1f5f9';
-    Chart.defaults.plugins.tooltip.padding = 12;
-    Chart.defaults.plugins.tooltip.cornerRadius = 8;
-}
-
 const CONFIG = {
     summaryURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=0&single=true&output=csv",
     holdingsURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=58859590&single=true&output=csv",
@@ -404,6 +392,8 @@ function parseYahooData(result, ticker) {
 // 📉 MDD 분석 로직
 async function analyzeMDD() {
     const tickerInput = document.getElementById('mdd-ticker').value.trim().toUpperCase();
+    const startDate = document.getElementById('mdd-start-date').value;
+    const endDate = document.getElementById('mdd-end-date').value;
     const analyzeBtn = document.getElementById('mdd-analyze-btn');
 
     if (!tickerInput) { alert("티커를 입력해주세요!"); return; }
@@ -411,23 +401,26 @@ async function analyzeMDD() {
     let ticker = tickerInput;
     if (/^\d{6}$/.test(ticker)) ticker += ".KS";
 
-    // 기간 설정 (최근 10년)
-    const p2 = Math.floor(Date.now() / 1000);
-    const p1 = p2 - (10 * 365 * 24 * 60 * 60);
-
     try {
         analyzeBtn.disabled = true;
-        analyzeBtn.innerHTML = "⏳ 데이터 로드 중...";
+        analyzeBtn.textContent = "⏳ 데이터 로드 중...";
 
+        const p1 = Math.floor(new Date(startDate).getTime() / 1000);
+        const p2 = Math.floor(new Date(endDate).getTime() / 1000);
+        // v8 API 사용 (v7은 인증 필요로 변경됨)
         const yahooURL = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?period1=${p1}&period2=${p2}&interval=1d&events=history`;
+
+        // isYahoo 매개변수 true 추가
         const data = await fetchWithFallback(yahooURL, true);
 
-        if (!data) throw new Error(`데이터를 가져오지 못했습니다. 티커 '${ticker}'를 확인해주세요.`);
+        if (!data) throw new Error(`데이터를 가져오지 못했습니다. 티커 '${ticker}'를 확인하거나 잠시 후 다시 시도해주세요.`);
 
-        analyzeBtn.innerHTML = "📊 통계 계산 중...";
+        // v8 API는 JSON 반환 → 파싱 처리
         const history = parseYahooData(data, ticker);
 
         if (history.length === 0) throw new Error("분석할 수 있는 주가 데이터가 없습니다.");
+
+        analyzeBtn.textContent = "📊 통계 계산 중...";
 
         let runningMax = -Infinity;
         let mdd = 0;
@@ -435,21 +428,21 @@ async function analyzeMDD() {
             if (d.close > runningMax) runningMax = d.close;
             const drawdown = (d.close / runningMax - 1);
             if (drawdown < mdd) mdd = drawdown;
-            return { ...d, runningMax, drawdown: drawdown };
+            return { ...d, runningMax, drawdown: drawdown * 100 };
         });
 
         const stats = calculateRecoveryStats(processedData);
-        const currentDrawdown = (processedData[processedData.length - 1].drawdown * 100);
+        const currentDrawdown = processedData[processedData.length - 1].drawdown;
 
         renderMDDCharts(ticker, processedData, stats, currentDrawdown);
+        renderMDDTable(stats, currentDrawdown);
         updateMDDSummary(ticker, mdd, processedData, currentDrawdown);
 
     } catch (err) {
-        console.error(err);
-        alert(`분석 중 오류 발생: ${err.message}`);
+        alert("분석 실패: " + err.message);
     } finally {
         analyzeBtn.disabled = false;
-        analyzeBtn.innerHTML = "분석 🔍";
+        analyzeBtn.textContent = "🐾 분석 실행";
     }
 }
 
@@ -459,18 +452,17 @@ function calculateRecoveryStats(data) {
     const latestPeak = data[data.length - 1].runningMax;
 
     return levels.map(level => {
-        // 특정 MDD 레벨보다 높은(0%에 가까운) 위치에 있었던 날수 계산
-        // 예: level이 100이면 drawdown >= -1.0 이므로 모든 날이 해당됨
-        const threshold = -(level / 100);
-        const count = data.filter(d => d.drawdown >= threshold).length;
+        // MDD 값이 -level% ~ 0% 사이에 있는 날짜 수 카운트 (누적 확률)
+        // 예: -5% 수준에서의 확률 = MDD가 0 ~ -5% 사이였던 날짜 수 / 전체 날짜 수
+        const count = data.filter(d => d.drawdown >= -level && d.drawdown <= 0).length;
         const prob = ((count / totalDays) * 100).toFixed(1);
 
-        // 해당 주가 계산: 최근 최고가 * (1 - 하락폭%)
+        // 해당 주가 계산: 최고가 * (1 - 낙폭%)
         const targetPrice = latestPeak * (1 - level / 100);
 
         return {
             level,
-            count: count,
+            count,
             prob,
             price: targetPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         };
@@ -479,134 +471,96 @@ function calculateRecoveryStats(data) {
 
 function renderMDDCharts(ticker, data, stats, currentDrawdown = 0) {
     const ctxMdd = document.getElementById('mddChart').getContext('2d');
-    const dates = data.map(d => d.date);
-    const prices = data.map(d => d.close);
-    const drawdowns = data.map(d => d.drawdown * 100);
-
     if (mddChart) mddChart.destroy();
-
-    const gradient = ctxMdd.createLinearGradient(0, 0, 0, 400);
-    gradient.addColorStop(0, 'rgba(251, 113, 133, 0.3)');
-    gradient.addColorStop(1, 'rgba(251, 113, 133, 0)');
-
     mddChart = new Chart(ctxMdd, {
-        type: 'line',
         data: {
-            labels: dates,
+            labels: data.map(d => d.date),
             datasets: [
-                {
-                    label: 'Price ($)',
-                    data: prices,
-                    borderColor: '#38bdf8',
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    yAxisID: 'y'
-                },
-                {
-                    label: 'Drawdown (%)',
-                    data: drawdowns,
-                    borderColor: '#fb7185',
-                    backgroundColor: gradient,
-                    fill: true,
-                    borderWidth: 1,
-                    pointRadius: 0,
-                    yAxisID: 'y1'
-                }
+                { type: 'line', label: '주가', data: data.map(d => d.close), borderColor: '#4a90e2', borderWidth: 2, pointRadius: 0, yAxisID: 'y' },
+                { type: 'line', label: '낙폭(%)', data: data.map(d => d.drawdown), backgroundColor: 'rgba(229, 57, 53, 0.2)', borderColor: 'rgba(229, 57, 53, 0.8)', fill: true, pointRadius: 0, yAxisID: 'y1' }
             ]
         },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            scales: {
-                y: { type: 'linear', position: 'left', grid: { color: 'rgba(255, 255, 255, 0.05)' } },
-                y1: { 
-                    type: 'linear', position: 'right', 
-                    min: -100, max: 0,
-                    grid: { display: false },
-                    ticks: { callback: v => v + '%' }
-                },
-                x: { grid: { display: false }, ticks: { autoSkip: true, maxTicksLimit: 10 } }
-            }
-        }
+        options: { responsive: true, maintainAspectRatio: false, scales: { y1: { position: 'right', min: -100, max: 0 } } }
     });
 
     const ctxRec = document.getElementById('recoveryChart').getContext('2d');
     if (recoveryChart) recoveryChart.destroy();
-    
+
+    // 현재 낙폭이 속한 레벨 계산 (5% 단위)
+    // 예: -7.2% -> 10, -12% -> 15
     const currentLevel = Math.ceil(Math.abs(currentDrawdown) / 5) * 5;
 
+    // 복귀 확률에 따른 색상 및 테두리 배열 생성
     const backgroundColors = stats.map(s => {
-        const p = parseFloat(s.prob);
-        if (p >= 90) return '#fb7185';
-        if (p >= 80) return '#fb923c';
-        return 'rgba(129, 140, 248, 0.6)';
+        const prob = parseFloat(s.prob);
+        if (prob >= 100) return 'rgba(255, 107, 107, 0.6)';
+        if (prob >= 90) return 'rgba(255, 159, 64, 0.6)';
+        return 'rgba(74, 144, 226, 0.6)';
     });
 
-    const borderColors = stats.map(s => s.level === currentLevel ? '#f1f5f9' : 'transparent');
-    const borderWidths = stats.map(s => s.level === currentLevel ? 3 : 0);
+    const borderColors = stats.map(s => (s.level === currentLevel) ? '#000000' : 'transparent');
+    const borderWidths = stats.map(s => (s.level === currentLevel) ? 2 : 0);
 
+    // 복귀 확률 그래프 (바 차트)
     recoveryChart = new Chart(ctxRec, {
         type: 'bar',
         data: {
             labels: stats.map(s => `-${s.level}%`),
             datasets: [{
-                label: 'Recovery Probability (%)',
+                label: '복귀 확률 (%)',
                 data: stats.map(s => s.prob),
                 backgroundColor: backgroundColors,
                 borderColor: borderColors,
-                borderWidth: borderWidths,
-                borderRadius: 4
+                borderWidth: borderWidths
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            scales: {
-                y: { 
-                    beginAtZero: true, max: 100,
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { callback: v => v + '%' }
-                },
-                x: { grid: { display: false } }
-            },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: (ctx) => `확률: ${ctx.raw}% (MDD 0 ~ ${ctx.label} 구간)`
-                    }
-                }
-            }
+            scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: '확률 (%)' } } },
+            plugins: { tooltip: { callbacks: { label: (ctx) => `복귀 확률: ${ctx.raw}% (MDD 0 ~ ${ctx.label} 구간)` } } }
         }
     });
+}
 
-    const tbody = document.getElementById('mdd-stats-tbody');
+function renderMDDTable(stats, currentDrawdown = 0) {
+    const tbody = document.querySelector('#recovery-table tbody');
     tbody.innerHTML = '';
+
+    // 현재 낙폭이 속한 레벨 계산
+    const currentLevel = Math.ceil(Math.abs(currentDrawdown) / 5) * 5;
+
     stats.forEach(s => {
+        const prob = parseFloat(s.prob);
+        let styles = [];
+
+        // 1. 확률에 따른 배경색 설정
+        if (prob >= 100) styles.push('background-color: rgba(255, 107, 107, 0.15)');
+        else if (prob >= 90) styles.push('background-color: rgba(255, 159, 64, 0.15)');
+
+        // 2. 현재 낙폭 레벨인 경우 굵게 표시
+        if (s.level === currentLevel) {
+            styles.push('font-weight: bold');
+            styles.push('border: 2px solid #000'); // 테두리도 추가하여 더 명확히 강조
+        }
+
         const tr = document.createElement('tr');
-        if (s.level === currentLevel) tr.className = 'highlight';
-        tr.innerHTML = `
-            <td style="color:var(--negative)">-${s.level}%</td>
-            <td style="font-weight:700">${s.prob}%</td>
-            <td>${s.count}일</td>
-            <td style="color:var(--primary)">$${s.price}</td>
-        `;
+        if (styles.length > 0) tr.setAttribute('style', styles.join('; '));
+
+        tr.innerHTML = `<td>-${s.level}%</td><td>${s.prob}%</td><td>${s.count}일</td><td>$${s.price}</td>`;
         tbody.appendChild(tr);
     });
 }
 
 function updateMDDSummary(ticker, mdd, data, currentDrawdown = 0) {
     const summary = document.getElementById('mdd-summary-content');
-    if (!summary) return;
     const lastPrice = data[data.length - 1].close;
     const totalReturn = ((lastPrice / data[0].close - 1) * 100).toFixed(2);
-    
     summary.innerHTML = `
         <div class="mdd-summary-item"><span class="label">종목</span><span class="value">${ticker}</span></div>
         <div class="mdd-summary-item"><span class="label">최대 낙폭</span><span class="value" style="color:var(--negative)">${(mdd * 100).toFixed(2)}%</span></div>
         <div class="mdd-summary-item"><span class="label">현재 낙폭</span><span class="value" style="color:var(--negative)">${currentDrawdown.toFixed(2)}%</span></div>
-        <div class="mdd-summary-item"><span class="label">누적 수익률</span><span class="value" style="color:var(--positive)">${totalReturn}%</span></div>
+        <div class="mdd-summary-item"><span class="label">누적 수익률</span><span class="value">${totalReturn}%</span></div>
         <div class="mdd-summary-item"><span class="label">현재가</span><span class="value">$${lastPrice.toFixed(2)}</span></div>
     `;
 }
@@ -742,132 +696,51 @@ function renderHoldingsTable() {
 
 function renderSummaryChart(labels, investData, evalData) {
     const canvas = document.getElementById('summaryChart'); if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    
     if (summaryChart) summaryChart.destroy();
-    
-    summaryChart = new Chart(ctx, {
+    summaryChart = new Chart(canvas.getContext('2d'), {
         type: 'bar',
-        data: { 
-            labels, 
-            datasets: [
-                { 
-                    label: '투자원금', 
-                    data: investData, 
-                    backgroundColor: 'rgba(129, 140, 248, 0.6)', 
-                    borderColor: '#818cf8',
-                    borderWidth: 1,
-                    borderRadius: 6
-                }, 
-                { 
-                    label: '평가금액', 
-                    data: evalData, 
-                    backgroundColor: 'rgba(56, 189, 248, 0.6)', 
-                    borderColor: '#38bdf8',
-                    borderWidth: 1,
-                    borderRadius: 6
-                }
-            ] 
-        },
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false,
-            scales: {
-                y: { grid: { color: 'rgba(255, 255, 255, 0.05)' } },
-                x: { grid: { display: false } }
-            },
-            plugins: {
-                legend: { position: 'top', align: 'end', labels: { boxWidth: 12, padding: 20 } }
-            }
-        }
+        data: { labels, datasets: [{ label: '투자원금', data: investData, backgroundColor: 'rgba(54, 162, 235, 0.6)' }, { label: '평가금액', data: evalData, backgroundColor: 'rgba(255, 99, 132, 0.6)' }] },
+        options: { responsive: true, maintainAspectRatio: false }
     });
 }
 
 function renderHistoryChart(data) {
     const canvas = document.getElementById('historyChart'); if (!canvas || !data) return;
-    const ctx = canvas.getContext('2d');
     const dates = [], evals = [], invests = [], incomes = [], dividends = [];
 
+    // 데이터 파싱 및 단위 변환 (원 -> 천만원)
     data.slice(1).forEach(row => {
         if (!row[0]) return;
         dates.push(row[0]);
+        // 10,000,000으로 나누어 천만원 단위로 변환
         evals.push(parseSafeFloat(row[1]) / 10000000);
         invests.push(parseSafeFloat(row[2]) / 10000000);
-        incomes.push(parseSafeFloat(row[3]) / 10000000);
-        dividends.push(parseSafeFloat(row[11]) / 10000000);
+        incomes.push(parseSafeFloat(row[3]) / 10000000); // D열
+        dividends.push(parseSafeFloat(row[11]) / 10000000); // L열
     });
 
     if (historyChart) historyChart.destroy();
-    
-    historyChart = new Chart(ctx, {
+    historyChart = new Chart(canvas.getContext('2d'), {
         type: 'line',
         data: {
             labels: dates,
             datasets: [
-                { 
-                    label: '평가금 (천만)', 
-                    data: evals, 
-                    borderColor: '#38bdf8', 
-                    backgroundColor: 'transparent',
-                    fill: false, 
-                    tension: 0.4, 
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    borderWidth: 3
-                },
-                { 
-                    label: '투자금 (천만)', 
-                    data: invests, 
-                    borderColor: '#818cf8', 
-                    backgroundColor: 'transparent',
-                    fill: false, 
-                    tension: 0.4, 
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    borderWidth: 2,
-                    borderDash: [5, 5]
-                },
-                { 
-                    label: '수입금 (천만)', 
-                    data: incomes, 
-                    borderColor: '#4ade80', 
-                    backgroundColor: 'transparent',
-                    fill: false, 
-                    tension: 0.4, 
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    borderWidth: 2
-                },
-                { 
-                    label: '배당금 (천만)', 
-                    data: dividends, 
-                    borderColor: '#facc15', 
-                    backgroundColor: 'transparent',
-                    fill: false, 
-                    tension: 0.4, 
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    borderWidth: 2
-                }
+                { label: '평가금 (천만)', data: evals, borderColor: '#e53935', backgroundColor: 'rgba(229, 57, 53, 0.1)', fill: false, tension: 0.1, pointRadius: 2 },
+                { label: '투자금 (천만)', data: invests, borderColor: '#1e88e5', backgroundColor: 'rgba(30, 136, 229, 0.1)', fill: false, tension: 0.1, pointRadius: 2 },
+                { label: '수입금 (천만)', data: incomes, borderColor: '#43a047', backgroundColor: 'rgba(67, 160, 71, 0.1)', fill: false, tension: 0.1, pointRadius: 2 },
+                { label: '배당금 (천만)', data: dividends, borderColor: '#fbc02d', backgroundColor: 'rgba(251, 192, 45, 0.1)', fill: false, tension: 0.1, pointRadius: 2 }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
             scales: {
                 y: {
-                    title: { display: false },
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    title: { display: true, text: '단위: 천만원', font: { weight: 'bold' } },
                     ticks: { callback: (value) => value.toLocaleString() }
-                },
-                x: {
-                    grid: { display: false },
-                    ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }
                 }
             },
             plugins: {
-                legend: { position: 'top', align: 'end', labels: { usePointStyle: true, boxWidth: 8, padding: 20 } },
                 tooltip: {
                     callbacks: {
                         label: function (context) {
@@ -875,6 +748,7 @@ function renderHistoryChart(data) {
                             if (label) label += ': ';
                             if (context.parsed.y !== null) {
                                 label += context.parsed.y.toFixed(1) + '천만원';
+                                // 억 단위 보조 표시 (예: 1.5억)
                                 if (context.parsed.y >= 10) {
                                     label += ` (${(context.parsed.y / 10).toFixed(2)}억원)`;
                                 }
@@ -890,23 +764,12 @@ function renderHistoryChart(data) {
 
 function renderBubbleChart(holdings) {
     const canvas = document.getElementById('bubbleChart'); if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    
     const bubbleData = holdings.map(item => ({
         label: item.name,
-        data: [{ 
-            x: item.dailyChange, 
-            y: item.returnRate, 
-            r: Math.min(25, Math.sqrt(item.eval / 1000000) * 1.5), 
-            eval: item.eval 
-        }],
-        backgroundColor: item.returnRate >= 0 ? 'rgba(74, 222, 128, 0.5)' : 'rgba(251, 113, 133, 0.5)',
-        borderColor: item.returnRate >= 0 ? '#4ade80' : '#fb7185',
-        borderWidth: 1
+        data: [{ x: item.dailyChange, y: item.returnRate, r: Math.sqrt(item.eval / 100000) * 0.8, eval: item.eval }]
     }));
-
     if (bubbleChart) bubbleChart.destroy();
-    bubbleChart = new Chart(ctx, {
+    bubbleChart = new Chart(canvas.getContext('2d'), {
         type: 'bubble',
         data: { datasets: bubbleData },
         options: {
@@ -914,16 +777,16 @@ function renderBubbleChart(holdings) {
             maintainAspectRatio: false,
             scales: {
                 x: {
-                    title: { display: true, text: '일일 변동률 (%)' },
+                    title: { display: true, text: '일일 변동률 (%)', font: { weight: 'bold' } },
                     grid: {
-                        color: (context) => context.tick.value === 0 ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.05)',
+                        color: (context) => context.tick.value === 0 ? '#666' : 'rgba(0,0,0,0.1)',
                         lineWidth: (context) => context.tick.value === 0 ? 2 : 1
                     }
                 },
                 y: {
-                    title: { display: true, text: '전체 수익률 (%)' },
+                    title: { display: true, text: '전체 수익률 (%)', font: { weight: 'bold' } },
                     grid: {
-                        color: (context) => context.tick.value === 0 ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.05)',
+                        color: (context) => context.tick.value === 0 ? '#666' : 'rgba(0,0,0,0.1)',
                         lineWidth: (context) => context.tick.value === 0 ? 2 : 1
                     }
                 }
@@ -932,10 +795,9 @@ function renderBubbleChart(holdings) {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        label: (context) => {
-                            const name = context.dataset.label;
-                            const d = context.raw;
-                            return `${name}: 수익률 ${d.y.toFixed(2)}%, 일변동 ${d.x.toFixed(2)}%`;
+                        label: function (context) {
+                            const item = context.raw;
+                            return `${context.dataset.label}: 수익률 ${item.y.toFixed(2)}%, 일변동 ${item.x.toFixed(2)}%`;
                         }
                     }
                 }
