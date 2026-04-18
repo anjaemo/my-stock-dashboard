@@ -1629,185 +1629,18 @@ async function requestMarketRefresh() {
     }
 }
 
-// ===== Market Detail Modal =====
-let marketChart = null;
-let currentMarketTicker = '';
-let currentMarketTitle = '';
-
-async function openMarketModal(ticker, title) {
-    const overlay = document.getElementById('market-modal-overlay');
-    if (!overlay) return;
-
-    currentMarketTicker = ticker;
-    currentMarketTitle = title;
-    
-    document.getElementById('market-modal-title').textContent = title;
-    document.getElementById('market-modal-subtitle').textContent = `${ticker} 상세 분석`;
-    document.getElementById('market-stats-summary').innerHTML = '<div style="text-align:center; padding:1rem;">⏳ 데이터를 불러오는 중...</div>';
-
-    overlay.classList.add('active');
-    document.body.style.overflow = 'hidden';
-
-    // 기본적으로 YTD 데이터 로드
-    updateMarketRange('ytd');
-}
-
-function closeMarketModal(event) {
-    if (event instanceof Event && event.target !== document.getElementById('market-modal-overlay')) return;
-    const overlay = document.getElementById('market-modal-overlay');
-    if (overlay) overlay.classList.remove('active');
-    document.body.style.overflow = '';
-}
-
-async function updateMarketRange(range) {
-    // 버튼 활성화 상태 변경
-    document.querySelectorAll('[id^="market-range-"]').forEach(btn => btn.classList.remove('active'));
-    document.getElementById(`market-range-${range}`).classList.add('active');
-
-    let period = range === 'ytd' ? 'ytd' : (range === '1y' ? '1y' : '3y');
-
-    // query1과 query2 두 서버를 순차적으로 시도
-    const hostnames = ['query1.finance.yahoo.com', 'query2.finance.yahoo.com'];
-    let result = null;
-    let lastError = null;
-
-    for (const hostname of hostnames) {
-        try {
-            const url = `https://${hostname}/v8/finance/chart/${currentMarketTicker}?interval=1d&range=${period}`;
-            console.log(`시장 데이터 시도 (${hostname}): ${url}`);
-            result = await fetchWithFallback(url, true);
-            
-            if (result && result.data && result.data.chart && result.data.chart.result && result.data.chart.result[0]) {
-                break; // 성공하면 중단
-            }
-        } catch (err) {
-            lastError = err;
-            console.warn(`${hostname} 시도 실패:`, err);
-        }
-    }
-
-    try {
-        if (!result || !result.data || !result.data.chart || !result.data.chart.result || !result.data.chart.result[0]) {
-            throw new Error("데이터를 가져오지 못했습니다. (서버 응답 없음)");
-        }
-        
-        const chartData = result.data.chart.result[0];
-        const timestamps = chartData.timestamp;
-        const indicators = chartData.indicators.quote[0];
-        const prices = indicators.close;
-        
-        if (!timestamps || !prices || timestamps.length === 0) {
-            throw new Error("해당 기간의 가격 데이터가 없습니다.");
-        }
-
-        // 유효한 데이터만 필터링 (null 제외)
-        const validData = timestamps.map((ts, i) => ({
-            timestamp: ts,
-            price: prices[i]
-        })).filter(d => d.price !== null && d.price !== undefined);
-
-        if (validData.length === 0) throw new Error("유효한 가격 데이터가 없습니다.");
-
-        const labels = validData.map(d => {
-            const date = new Date(d.timestamp * 1000);
-            return date.getFullYear().toString().slice(-2) + '.' + (date.getMonth() + 1).toString().padStart(2, '0') + '.' + date.getDate().toString().padStart(2, '0');
-        });
-        const filteredPrices = validData.map(d => d.price);
-
-        // 차트 그리기
-        renderMarketHistoryChart(labels, filteredPrices);
-        
-        // 통계 업데이트
-        updateMarketStats(filteredPrices, range);
-
-    } catch (err) {
-        console.error("Market data processing error:", err);
-        document.getElementById('market-stats-summary').innerHTML = `<div style="text-align:center; padding:1rem; color:var(--negative);">⚠️ ${err.message}</div>`;
-    }
-}
-
-function renderMarketHistoryChart(labels, prices) {
-    const canvas = document.getElementById('market-history-chart');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-
-    if (marketChart) marketChart.destroy();
-
-    const isUp = prices[prices.length - 1] >= prices[0];
-    const color = isUp ? '#4ade80' : '#fb7185';
-    const gradient = ctx.createLinearGradient(0, 0, 0, 350);
-    gradient.addColorStop(0, isUp ? 'rgba(74, 222, 128, 0.2)' : 'rgba(251, 113, 133, 0.2)');
-    gradient.addColorStop(1, 'transparent');
-
-    marketChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Price',
-                data: prices,
-                borderColor: color,
-                borderWidth: 2,
-                fill: true,
-                backgroundColor: gradient,
-                pointRadius: 0,
-                tension: 0.2
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            scales: {
-                x: { ticks: { maxTicksLimit: 8, color: '#94a3b8' }, grid: { display: false } },
-                y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                    titleColor: '#f1f5f9',
-                    bodyColor: '#f1f5f9'
-                }
-            }
-        }
-    });
-}
-
-function updateMarketStats(prices, range) {
-    const startPrice = prices[0];
-    const endPrice = prices[prices.length - 1];
-    const highPrice = Math.max(...prices.filter(p => p !== null));
-    const lowPrice = Math.min(...prices.filter(p => p !== null));
-    const changePct = ((endPrice / startPrice - 1) * 100).toFixed(2);
-    const drawdown = ((endPrice / highPrice - 1) * 100).toFixed(2);
-
-    const statsSummary = document.getElementById('market-stats-summary');
-    statsSummary.innerHTML = `
-        <div class="mdd-summary-container" style="margin-bottom:0;">
-            <div class="mdd-summary-item">
-                <span class="label">기간 수익률</span>
-                <span class="value ${changePct >= 0 ? 'value-up' : 'value-down'}">${changePct}%</span>
-            </div>
-            <div class="mdd-summary-item">
-                <span class="label">최고가 (High)</span>
-                <span class="value">${highPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-            </div>
-            <div class="mdd-summary-item">
-                <span class="label">최저가 (Low)</span>
-                <span class="value">${lowPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-            </div>
-            <div class="mdd-summary-item">
-                <span class="label">고점 대비 낙폭</span>
-                <span class="value value-down">${drawdown}%</span>
-            </div>
-        </div>
-    `;
+// ===== Slider Controls =====
+function moveSlider(direction) {
+    const slider = document.getElementById('chart-slider');
+    if (!slider) return;
+    const slideWidth = slider.offsetWidth;
+    slider.scrollBy({ left: direction * slideWidth, behavior: 'smooth' });
 }
 
 function goSlide(index) {
     const slider = document.getElementById('chart-slider');
-    const slideWidth = slider.clientWidth;
+    if (!slider) return;
+    const slideWidth = slider.offsetWidth;
     slider.scrollTo({ left: index * slideWidth, behavior: 'smooth' });
 }
 
@@ -1816,7 +1649,7 @@ function updateSliderDots() {
     if (!slider) return;
     
     // 정확한 인덱스 계산
-    const index = Math.round(slider.scrollLeft / slider.offsetWidth);
+    const index = Math.round(slider.scrollLeft / (slider.offsetWidth || 1));
     const dots = document.querySelectorAll('.slider-dot');
     dots.forEach((dot, i) => {
         dot.classList.toggle('active', i === index);
