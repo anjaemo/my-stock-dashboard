@@ -43,12 +43,12 @@
                     <div id="card-rate-val" class="value">-</div>
                 </div>
                 <div class="summary-card">
-                    <span class="label">🎁 총 배당금</span>
-                    <div id="card-dividend-val" class="value">-</div>
+                    <span class="label">🌓 일일 변동액(원)</span>
+                    <div id="card-daily-val" class="value">-</div>
                 </div>
                 <div class="summary-card">
-                    <span class="label">🇺🇸 달러 비중</span>
-                    <div id="card-usd-val" class="value">-</div>
+                    <span class="label">🎁 총 배당금</span>
+                    <div id="card-dividend-val" class="value">-</div>
                 </div>
             </section>
 
@@ -88,8 +88,29 @@
             <div class="main-layout">
                 <div class="content-area">
                     <section class="card">
-                        <h2>📈 자산 추이 (History)</h2>
-                        <div style="height:320px;"><canvas id="historyChart"></canvas></div>
+                        <h2 id="slider-title">📈 자산 추이 (History)</h2>
+                        <div class="slider-container">
+                            <div class="slider-wrapper" id="chart-slider">
+                                <!-- 슬라이드 1: 자산 추이 -->
+                                <div class="slide">
+                                    <canvas id="historyChart"></canvas>
+                                </div>
+                                <!-- 슬라이드 2: 리스크 분석 -->
+                                <div class="slide">
+                                    <canvas id="bubbleChart"></canvas>
+                                </div>
+                            </div>
+                            
+                            <!-- 슬라이더 컨트롤 -->
+                            <button class="slider-btn prev" onclick="moveSlider(-1)">❮</button>
+                            <button class="slider-btn next" onclick="moveSlider(1)">❯</button>
+
+                            <!-- 슬라이더 인디케이터 -->
+                            <div class="slider-nav">
+                                <div class="slider-dot active" onclick="goSlide(0)"></div>
+                                <div class="slider-dot" onclick="goSlide(1)"></div>
+                            </div>
+                        </div>
                     </section>
 
                     <section class="card">
@@ -183,16 +204,18 @@
                                 <select id="currency-select"><option value="KRW">KRW 🇰🇷</option><option value="USD">USD 🇺🇸</option></select>
                             </div>
                             <div class="input-group"><label>날짜</label><input type="date" id="date-input" required></div>
-                            <div class="input-group" id="stock-group"><label>종목명</label><input type="text" id="stock-name" placeholder="예: AAPL, 삼성전자"></div>
+                            <div class="input-group" id="stock-group">
+                                <label>종목명</label>
+                                <select id="stock-name-select">
+                                    <option value="">보유 종목 선택</option>
+                                    <option value="DIRECT">직접 입력 (신규)</option>
+                                </select>
+                                <input type="text" id="stock-name-input" placeholder="신규 종목명 입력" style="display:none; margin-top:0.5rem;">
+                            </div>
                             <div class="input-group" id="price-group"><label>단가</label><input type="number" step="any" id="price-input"></div>
                             <div class="input-group"><label id="qty-label">수량/금액</label><input type="number" step="any" id="quantity-input" required></div>
                             <button type="submit" class="submit-btn">기록하기 🐕</button>
                         </form>
-                    </section>
-
-                    <section class="card">
-                        <h2>📊 리스크 분석</h2>
-                        <div style="height:300px;"><canvas id="bubbleChart"></canvas></div>
                     </section>
                 </aside>
             </div>
@@ -324,6 +347,9 @@
             </div>
         </div>
     </div>
+
+    <!-- 플로팅 갱신 버튼 -->
+    <button id="refresh-fab" class="refresh-fab" title="데이터 새로고침">갱신</button>
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
