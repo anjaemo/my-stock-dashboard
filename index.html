@@ -15,7 +15,16 @@
                 <h1>🐶 바둑이 주식 대시보드</h1>
                 <p class="subtitle">데이터로 보는 스마트한 투자 생활</p>
             </div>
-            <div id="last-updated" class="timestamp">업데이트 확인 중...</div>
+            <div class="header-right">
+                <div class="privacy-toggle-container">
+                    <span class="privacy-label">🕶️ Privacy Mode</span>
+                    <label class="switch">
+                        <input type="checkbox" id="privacy-toggle">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div id="last-updated" class="timestamp">업데이트 확인 중...</div>
+            </div>
         </header>
 
         <nav class="tabs">
@@ -28,27 +37,27 @@
             <section class="summary-cards">
                 <div class="summary-card">
                     <span class="label">💰 현재 평가액</span>
-                    <div id="card-eval-val" class="value">-</div>
+                    <div id="card-eval-val" class="value skeleton">-</div>
                 </div>
                 <div class="summary-card">
                     <span class="label">💳 총 투자액</span>
-                    <div id="card-invest-val" class="value">-</div>
+                    <div id="card-invest-val" class="value skeleton">-</div>
                 </div>
                 <div class="summary-card">
                     <span class="label">💵 수익액</span>
-                    <div id="card-profit-val" class="value">-</div>
+                    <div id="card-profit-val" class="value skeleton">-</div>
                 </div>
                 <div class="summary-card">
                     <span class="label">📈 수익률</span>
-                    <div id="card-rate-val" class="value">-</div>
+                    <div id="card-rate-val" class="value skeleton">-</div>
                 </div>
                 <div class="summary-card">
                     <span class="label">🌓 일일 변동액(원)</span>
-                    <div id="card-daily-val" class="value">-</div>
+                    <div id="card-daily-val" class="value skeleton">-</div>
                 </div>
                 <div class="summary-card">
                     <span class="label">🎁 총 배당금</span>
-                    <div id="card-dividend-val" class="value">-</div>
+                    <div id="card-dividend-val" class="value skeleton">-</div>
                 </div>
             </section>
 

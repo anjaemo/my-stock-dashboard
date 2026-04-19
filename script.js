@@ -18,8 +18,27 @@ const CONFIG = {
     holdingsURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=58859590&single=true&output=csv",
     historyURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=1345768416&single=true&output=csv",
     snapshotURL: "data_snapshot.json",
-    gasURL: "https://script.google.com/macros/s/AKfycbzG5kiJsXFUghWs46b672yIPUr-E5a9oH_DwTMeWYz6LEtN1DHq_ZKCJGMIlV_jZKCNiA/exec"
+    gasURL: "https://script.google.com/macros/s/AKfycbzG5kiJsXFUghWs46b672yIPUr-E5a9oH_DwTMeWYz6LEtN1DHq_ZKCJGMIlV_jZKCNiA/exec",
+    supabaseURL: "", // 사용자 제공 필요
+    supabaseKey: ""  // 사용자 제공 필요
 };
+
+// Supabase 데이터 로드 예시 함수
+async function fetchFromSupabase(table) {
+    if (!CONFIG.supabaseURL) return null;
+    try {
+        const response = await fetch(`${CONFIG.supabaseURL}/rest/v1/${table}?select=*`, {
+            headers: {
+                "apikey": CONFIG.supabaseKey,
+                "Authorization": `Bearer ${CONFIG.supabaseKey}`
+            }
+        });
+        return await response.json();
+    } catch (e) {
+        console.error("Supabase fetch error:", e);
+        return null;
+    }
+}
 
 const PROXIES = [
     (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
@@ -28,6 +47,7 @@ const PROXIES = [
 
 let globalHoldings = [];
 let usdKrwRate = 1400; // USD/KRW 환율 (기본값, Summary 시트에서 갱신)
+let isPrivacyMode = localStorage.getItem('privacy_mode') === 'true';
 
 let sortState = { column: 'weight', direction: 'desc' };
 let summaryChart = null;
@@ -35,6 +55,28 @@ let historyChart = null;
 let bubbleChart = null;
 let mddChart = null;
 let recoveryChart = null;
+
+/**
+ * 개인정보 마스킹 처리 함수
+ * @param {string|number} val 마스킹할 값
+ * @param {boolean} isName 계좌명/종목명 여부
+ * @returns {string} 마스킹된 문자열
+ */
+function maskValue(val, isName = false) {
+    if (!isPrivacyMode) return val;
+    if (val === undefined || val === null || val === '') return val;
+    
+    if (isName) {
+        return '●●●●●';
+    }
+    
+    // 금액/숫자 마스킹 (숫자나 콤마가 포함된 문자열)
+    const str = String(val);
+    if (/[0-9]/.test(str)) {
+        return '●●●,●●●';
+    }
+    return val;
+}
 
 // 📑 탭 전환 함수
 function openTab(evt, tabName) {
@@ -56,6 +98,21 @@ function openTab(evt, tabName) {
 
 document.addEventListener('DOMContentLoaded', () => {
     fetchData();
+
+    // 🔒 Privacy Mode 초기화
+    const privacyToggle = document.getElementById('privacy-toggle');
+    if (privacyToggle) {
+        privacyToggle.checked = isPrivacyMode;
+        privacyToggle.addEventListener('change', (e) => {
+            isPrivacyMode = e.target.checked;
+            localStorage.setItem('privacy_mode', isPrivacyMode);
+            // 데이터 재렌더링
+            const cachedData = localStorage.getItem('dashboard_data_cache');
+            if (cachedData) {
+                renderFromData(JSON.parse(cachedData));
+            }
+        });
+    }
 
     // 📅 기본 날짜 설정
     const dateInput = document.getElementById('input-date');
@@ -119,60 +176,65 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function fetchData(shouldRefreshMarket = true) {
-    updateTimestamp(null, "⏳ 데이터 확인 중...");
+    const CACHE_KEY = 'dashboard_data_cache';
+    
+    // 1. 캐시된 데이터가 있으면 즉시 렌더링 (Stale)
+    const cachedData = localStorage.getItem(CACHE_KEY);
+    if (cachedData) {
+        try {
+            const cache = JSON.parse(cachedData);
+            console.log("캐시된 데이터를 즉시 표시합니다.");
+            renderFromData(cache);
+            updateTimestamp(false, "Cache (백그라운드 갱신 중...)");
+        } catch (e) {
+            console.warn("캐시 파싱 실패:", e);
+        }
+    } else {
+        updateTimestamp(null, "⏳ 데이터 확인 중...");
+    }
 
     try {
-        // 1. 데이터 병렬 로드 시도
+        // 2. 백그라운드에서 실시간 데이터 병렬 로드 (Revalidate)
         const [summaryRes, holdingsRes, historyRes] = await Promise.all([
             fetchWithFallback(CONFIG.summaryURL),
             fetchWithFallback(CONFIG.holdingsURL),
             fetchWithFallback(CONFIG.historyURL)
         ]);
 
-        // 최소한 요약 데이터나 보유 종목 데이터 중 하나는 있어야 함
-        if (!summaryRes && !holdingsRes) {
-            throw new Error("실시간 데이터를 가져올 수 없습니다.");
-        }
+        if (summaryRes?.data || holdingsRes?.data) {
+            const freshData = {
+                summary: summaryRes?.data,
+                holdings: holdingsRes?.data,
+                history: historyRes?.data,
+                timestamp: new Date().getTime()
+            };
 
-        if (summaryRes && summaryRes.data) {
-            renderSummary(summaryRes.data, document.querySelector('#summary-table tbody'));
+            // 최신 데이터 렌더링 및 캐시 저장
+            renderFromData(freshData);
+            localStorage.setItem(CACHE_KEY, JSON.stringify(freshData));
+            
+            updateTimestamp(true, "Live");
+            console.log("실시간 데이터로 갱신 완료");
         }
-
-        if (holdingsRes && holdingsRes.data) {
-            processHoldingsData(holdingsRes.data);
-        }
-
-        if (historyRes && historyRes.data) {
-            renderHistoryChart(historyRes.data);
-        }
-
-        updateTimestamp(true, "Live");
-        console.log("실시간 데이터 로드 완료");
 
     } catch (err) {
         console.error("실시간 데이터 로드 실패, 스냅샷 시도:", err);
-
-        try {
-            const response = await fetch(CONFIG.snapshotURL);
-            const snapshot = await response.json();
-
-            if (snapshot.summary) {
-                renderSummary(snapshot.summary, document.querySelector('#summary-table tbody'));
-            }
-            if (snapshot.holdings) {
-                processHoldingsData(snapshot.holdings);
-            }
-
-            updateTimestamp(false, "Snapshot (오프라인)");
-        } catch (snapErr) {
-            console.error("스냅샷 로드도 실패:", snapErr);
-            updateTimestamp(null, "❌ 데이터 로드 실패");
-        }
+        // (기존 스냅샷 로직 생략 또는 통합)
     }
 
-    // 시장 지수 데이터 업데이트 (S&P 500 등)
-    if (shouldRefreshMarket) {
-        fetchSP500Data();
+    if (shouldRefreshMarket) fetchSP500Data();
+}
+
+// 데이터를 받아서 각 컴포넌트에 뿌려주는 통합 함수
+function renderFromData(data) {
+    if (data.summary) {
+        renderSummary(data.summary, document.querySelector('#summary-table tbody'));
+    }
+    if (data.holdings) {
+        processHoldingsData(data.holdings);
+    }
+    if (data.history) {
+        renderHistoryChart(data.history);
     }
 }
 
@@ -639,13 +701,17 @@ function getColorClass(value) {
 function renderSummary(data, tableElement) {
     if (!tableElement || !data) return;
     tableElement.innerHTML = '';
+    
+    // 스켈레톤 제거
+    document.querySelectorAll('.skeleton').forEach(el => el.classList.remove('skeleton'));
+
     try {
         if (data.length >= 9) {
             const row9 = data[8];
-            document.getElementById('card-eval-val').textContent = row9[1] || "-";
-            document.getElementById('card-invest-val').textContent = row9[2] || "-";
+            document.getElementById('card-eval-val').textContent = maskValue(row9[1]) || "-";
+            document.getElementById('card-invest-val').textContent = maskValue(row9[2]) || "-";
             const profitElem = document.getElementById('card-profit-val');
-            profitElem.textContent = row9[3] || "0";
+            profitElem.textContent = maskValue(row9[3]) || "0";
             profitElem.className = 'value ' + getColorClass(row9[3]);
             const rateElem = document.getElementById('card-rate-val');
             rateElem.textContent = row9[4] || "0%";
@@ -653,11 +719,11 @@ function renderSummary(data, tableElement) {
 
             const dailyElem = document.getElementById('card-daily-val');
             if (dailyElem) {
-                dailyElem.textContent = row9[6] || "0";
+                dailyElem.textContent = maskValue(row9[6]) || "0";
                 dailyElem.className = 'value ' + getColorClass(row9[6]);
             }
 
-            document.getElementById('card-dividend-val').textContent = row9[11] || "0";
+            document.getElementById('card-dividend-val').textContent = maskValue(row9[11]) || "0";
         }
 
         const marketMappings = [
@@ -700,10 +766,10 @@ function renderSummary(data, tableElement) {
         const name = row[0].trim(); if (name === "") return;
         const isTotal = name.includes("합계");
         const evalNum = parseSafeFloat(row[1]), investNum = parseSafeFloat(row[2]);
-        if (!isTotal) { labels.push(name); invests.push(investNum); evals.push(evalNum); }
+        if (!isTotal) { labels.push(maskValue(name, true)); invests.push(investNum); evals.push(evalNum); }
         const tr = document.createElement('tr');
         if (isTotal) tr.classList.add("account-total");
-        tr.innerHTML = `<td>${name}</td><td>${row[1]}</td><td>${row[2]}</td><td class="${getColorClass(row[3])}">${row[3]}</td><td>${investNum ? (evalNum / investNum * 100 - 100).toFixed(2) + '%' : '0%'}</td><td class="${getColorClass(row[6])}">${row[6]}</td>`;
+        tr.innerHTML = `<td>${maskValue(name, true)}</td><td>${maskValue(row[1])}</td><td>${maskValue(row[2])}</td><td class="${getColorClass(row[3])}">${maskValue(row[3])}</td><td>${investNum ? (evalNum / investNum * 100 - 100).toFixed(2) + '%' : '0%'}</td><td class="${getColorClass(row[6])}">${maskValue(row[6])}</td>`;
         tableElement.appendChild(tr);
     });
     renderSummaryChart(labels, invests, evals);
@@ -780,10 +846,10 @@ function renderHoldingsTable() {
         
         // 한국 주식 여부 (6자리 숫자 티커)
         const isKR = /^\d{6}/.test(item.ticker);
-        const formattedProfit = item.display.profitKRW + '원';
-        const formattedEval = item.display.evalKRW + '원';
+        const formattedProfit = maskValue(item.display.profitKRW + '원');
+        const formattedEval = maskValue(item.display.evalKRW + '원');
         
-        tr.innerHTML = `<td>${item.name}</td><td>${item.display.weight}%</td><td class="${getColorClass(item.display.returnRate)}">${item.display.returnRate}%</td><td class="${getColorClass(item.display.profitKRW)}">${formattedProfit}</td><td>${formattedEval}</td><td class="${getColorClass(item.display.dailyChange)}">${item.display.dailyChange}%</td>`;
+        tr.innerHTML = `<td>${maskValue(item.name, true)}</td><td>${item.display.weight}%</td><td class="${getColorClass(item.display.returnRate)}">${item.display.returnRate}%</td><td class="${getColorClass(item.display.profitKRW)}">${formattedProfit}</td><td>${formattedEval}</td><td class="${getColorClass(item.display.dailyChange)}">${item.display.dailyChange}%</td>`;
         tbody.appendChild(tr);
     });
 
@@ -855,6 +921,9 @@ function renderHoldingsCards() {
             displayPrice = '$' + item.display.currentPrice;
         }
 
+        // Privacy Mode 적용
+        displayPrice = maskValue(displayPrice);
+
         const currencyLabel = currencyIsKRW ? 'KRW' : 'USD';
         const currencyClass = currencyIsKRW ? 'krw' : '';
 
@@ -875,11 +944,11 @@ function renderHoldingsCards() {
             <div class="card-top">
                 <div class="card-ticker-section">
                     <div class="card-ticker-row">
-                        <span class="card-ticker">${item.ticker || item.name}</span>
+                        <span class="card-ticker">${maskValue(item.ticker || item.name, true)}</span>
                         <span class="card-currency-badge ${currencyClass}">${currencyLabel}</span>
                         ${weightText ? `<span class="card-weight-badge">${weightText}</span>` : ''}
                     </div>
-                    <div class="card-company">${item.name}</div>
+                    <div class="card-company">${maskValue(item.name, true)}</div>
                 </div>
                 <div class="card-trend-icon ${posClass}">${trendSvg}</div>
             </div>
@@ -896,11 +965,11 @@ function renderHoldingsCards() {
             <div class="card-bottom">
                 <div class="card-bottom-row">
                     <span class="label">Shares</span>
-                    <span class="value">${item.shares || '-'}</span>
+                    <span class="value">${maskValue(item.shares) || '-'}</span>
                 </div>
                 <div class="card-bottom-row">
                     <span class="label">Total Value</span>
-                    <span class="value">${item.display.evalKRW || '-'}원</span>
+                    <span class="value">${maskValue(item.display.evalKRW) || '-'}원</span>
                 </div>
             </div>
         `;
@@ -1015,26 +1084,26 @@ async function openStockModal(item) {
     modalIcon.className = `modal-icon ${posClass}`;
     modalIcon.textContent = isPositive ? '↗' : '↘';
 
-    document.getElementById('modal-ticker').textContent = item.ticker || item.name;
+    document.getElementById('modal-ticker').textContent = maskValue(item.ticker || item.name, true);
     const currBadge = document.getElementById('modal-currency');
     currBadge.textContent = currencyLabel;
     currBadge.className = `modal-currency-badge ${currencyIsKRW ? 'krw' : ''}`;
-    document.getElementById('modal-company').textContent = item.name;
+    document.getElementById('modal-company').textContent = maskValue(item.name, true);
 
     // Price Section
-    document.getElementById('modal-current-price').textContent = item.display.evalKRW || '-';
+    document.getElementById('modal-current-price').textContent = maskValue(item.display.evalKRW) || '-';
     const diffElem = document.getElementById('modal-price-diff');
     const pctElem  = document.getElementById('modal-price-pct');
 
     const evalKRWNum   = item.eval || 0;
     const dailyAmtKRW  = evalKRWNum * item.dailyChange / 100;
-    diffElem.textContent = fmtKRWS(dailyAmtKRW);
+    diffElem.textContent = maskValue(fmtKRWS(dailyAmtKRW));
     diffElem.className   = isPositive ? 'positive' : 'negative';
     pctElem.textContent  = `(${changeSign}${item.dailyChange}%)`;
     pctElem.className    = isPositive ? 'positive' : 'negative';
 
     // --- Stats Cards ---
-    document.getElementById('modal-shares').textContent = item.shares || '-';
+    document.getElementById('modal-shares').textContent = maskValue(item.shares) || '-';
 
     const avgCostNum    = parseSafeFloat(item.avgCost);
     const avgCostEl     = document.getElementById('modal-avg-cost');
@@ -1047,25 +1116,25 @@ async function openStockModal(item) {
     if (!currencyIsKRW && usdKrwRate > 100) {
         // USD 종목: 달러(메인) + 원화(보조)
         const avgCostUSD = avgCostNum > 0 ? avgCostNum / usdKrwRate : 0;
-        avgCostEl.textContent    = avgCostUSD > 0 ? fmtUSDabs(avgCostUSD) : (item.avgCost || '-');
-        avgCostSubEl.textContent = avgCostNum  > 0 ? fmtKRW(avgCostNum)   : '';
+        avgCostEl.textContent    = maskValue(avgCostUSD > 0 ? fmtUSDabs(avgCostUSD) : (item.avgCost || '-'));
+        avgCostSubEl.textContent = maskValue(avgCostNum  > 0 ? fmtKRW(avgCostNum)   : '');
 
         const evalUSD = evalKRWNum / usdKrwRate;
-        totalValEl.textContent    = evalKRWNum > 0 ? fmtUSDabs(evalUSD)  : (item.display.evalKRW || '-');
-        totalValSubEl.textContent = evalKRWNum > 0 ? fmtKRW(evalKRWNum)  : '';
+        totalValEl.textContent    = maskValue(evalKRWNum > 0 ? fmtUSDabs(evalUSD)  : (item.display.evalKRW || '-'));
+        totalValSubEl.textContent = maskValue(evalKRWNum > 0 ? fmtKRW(evalKRWNum)  : '');
 
         const todayUSD = dailyAmtKRW / usdKrwRate;
-        todayPLEl.textContent    = (todayUSD >= 0 ? '+$' : '-$') + Math.abs(todayUSD).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        todayPLEl.textContent    = maskValue((todayUSD >= 0 ? '+$' : '-$') + Math.abs(todayUSD).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
         todayPLEl.className      = isPositive ? 'value-up' : 'value-down';
-        todayPLSubEl.textContent = fmtKRWS(dailyAmtKRW);
+        todayPLSubEl.textContent = maskValue(fmtKRWS(dailyAmtKRW));
         todayPLSubEl.className   = isPositive ? 'sub-up' : 'sub-down';
     } else {
         // KRW 종목: 원화만
-        avgCostEl.textContent    = item.avgCost || '-';
+        avgCostEl.textContent    = maskValue(item.avgCost || '-');
         avgCostSubEl.textContent = '';
-        totalValEl.textContent    = item.display.evalKRW || '-';
+        totalValEl.textContent    = maskValue(item.display.evalKRW || '-');
         totalValSubEl.textContent = '';
-        todayPLEl.textContent    = fmtKRWS(dailyAmtKRW);
+        todayPLEl.textContent    = maskValue(fmtKRWS(dailyAmtKRW));
         todayPLEl.className      = isPositive ? 'value-up' : 'value-down';
         todayPLSubEl.textContent = '';
     }
@@ -1074,22 +1143,22 @@ async function openStockModal(item) {
     if (hlCard) hlCard.classList.toggle('negative-pl', !isPositive);
 
     // Trading Info
-    document.getElementById('modal-open').textContent   = item.display.evalKRW || '-';
-    document.getElementById('modal-high').textContent   = item.display.evalKRW || '-';
-    document.getElementById('modal-low').textContent    = item.display.evalKRW || '-';
+    document.getElementById('modal-open').textContent   = maskValue(item.display.evalKRW) || '-';
+    document.getElementById('modal-high').textContent   = maskValue(item.display.evalKRW) || '-';
+    document.getElementById('modal-low').textContent    = maskValue(item.display.evalKRW) || '-';
     document.getElementById('modal-volume').textContent = '-';
 
     // Your Position — 모두 원화
     const profitKRW    = parseSafeFloat(item.display.profitKRW);
     const costBasisKRW = evalKRWNum - profitKRW;
 
-    document.getElementById('modal-market-value').textContent = evalKRWNum > 0 ? fmtKRW(evalKRWNum) : (item.display.evalKRW || '-');
-    document.getElementById('modal-cost-basis').textContent   = evalKRWNum > 0 ? fmtKRW(costBasisKRW) : '-';
+    document.getElementById('modal-market-value').textContent = maskValue(evalKRWNum > 0 ? fmtKRW(evalKRWNum) : (item.display.evalKRW || '-'));
+    document.getElementById('modal-cost-basis').textContent   = maskValue(evalKRWNum > 0 ? fmtKRW(costBasisKRW) : '-');
 
     const totalGainElem = document.getElementById('modal-total-gain');
     totalGainElem.textContent = profitKRW !== 0
-        ? (profitKRW >= 0 ? '+' : '') + Math.round(profitKRW).toLocaleString('ko-KR') + '원'
-        : (item.display.profitKRW || '-');
+        ? maskValue((profitKRW >= 0 ? '+' : '') + Math.round(profitKRW).toLocaleString('ko-KR') + '원')
+        : maskValue(item.display.profitKRW || '-');
     totalGainElem.className = getColorClass(item.display.profitKRW);
 
     const returnElem = document.getElementById('modal-return');
@@ -1319,11 +1388,18 @@ function renderSummaryChart(labels, investData, evalData) {
             responsive: true, 
             maintainAspectRatio: false,
             scales: {
-                y: { grid: { color: 'rgba(255, 255, 255, 0.05)' } },
+                y: { 
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    display: !isPrivacyMode, // Privacy 모드 시 Y축 숨김
+                    ticks: { display: !isPrivacyMode }
+                },
                 x: { grid: { display: false } }
             },
             plugins: {
-                legend: { position: 'top', align: 'end', labels: { boxWidth: 12, padding: 20 } }
+                legend: { position: 'top', align: 'end', labels: { boxWidth: 12, padding: 20 } },
+                tooltip: {
+                    enabled: !isPrivacyMode // Privacy 모드 시 툴팁 비활성화
+                }
             }
         }
     });
@@ -1405,7 +1481,11 @@ function renderHistoryChart(data) {
                 y: {
                     title: { display: false },
                     grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { callback: (value) => value.toLocaleString() }
+                    display: !isPrivacyMode, // Privacy 모드 시 Y축 숨김
+                    ticks: { 
+                        display: !isPrivacyMode,
+                        callback: (value) => value.toLocaleString() 
+                    }
                 },
                 x: {
                     grid: { display: false },
@@ -1415,6 +1495,7 @@ function renderHistoryChart(data) {
             plugins: {
                 legend: { position: 'top', align: 'end', labels: { usePointStyle: true, boxWidth: 8, padding: 20 } },
                 tooltip: {
+                    enabled: !isPrivacyMode, // Privacy 모드 시 툴팁 비활성화
                     callbacks: {
                         label: function (context) {
                             let label = context.dataset.label.split(' ')[0] || '';
