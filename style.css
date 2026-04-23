@@ -249,6 +249,21 @@ header h1 {
     gap: 1.5rem;
 }
 
+/* Tablet & Mobile Layout Adjustment */
+@media (max-width: 1024px) {
+    .main-layout {
+        grid-template-columns: 1fr;
+    }
+    
+    .sidebar-area {
+        order: 2; /* 사이드바를 아래로 보냄 */
+    }
+    
+    .content-area {
+        order: 1;
+    }
+}
+
 .card {
     background: var(--bg-card);
     backdrop-filter: var(--glass-blur);
@@ -265,6 +280,15 @@ header h1 {
     align-items: center;
     gap: 0.5rem;
     color: var(--text-main);
+}
+
+/* Chart Containers */
+.chart-container-sm { height: 300px; }
+.chart-container-md { height: 400px; }
+
+@media (max-width: 768px) {
+    .chart-container-sm { height: 250px; }
+    .chart-container-md { height: 300px; }
 }
 
 /* Tables */
@@ -404,15 +428,81 @@ select:focus, input:focus {
     font-weight: 700;
 }
 
-/* Responsive MDD */
+/* General Responsive Styles */
 @media (max-width: 1024px) {
     .mdd-grid { grid-template-columns: 1fr; }
 }
 
+@media (max-width: 768px) {
+    .container {
+        padding: 1rem;
+    }
+    
+    header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1.2rem;
+    }
+    
+    .header-right {
+        align-items: flex-start;
+        width: 100%;
+    }
+    
+    .summary-cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+    }
+    
+    .market-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .summary-card {
+        padding: 1rem;
+    }
+    
+    .summary-card .value {
+        font-size: 1.1rem;
+    }
 
-@media (max-width: 640px) {
-    .summary-cards { grid-template-columns: 1fr 1fr; }
-    header { flex-direction: column; align-items: flex-start; gap: 1rem; }
+    .slide {
+        height: 350px !important; /* 모바일에서는 차트 높이를 줄임 */
+    }
+    
+    .modal-container {
+        padding: 1.2rem;
+        border-radius: 20px;
+        width: 95%;
+        margin: 0 auto;
+    }
+    
+    .modal-current-price {
+        font-size: 2rem;
+    }
+    
+    .modal-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .summary-cards {
+        grid-template-columns: 1fr;
+    }
+    
+    .market-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .tab-btn {
+        padding: 0.6rem 1rem;
+        font-size: 0.85rem;
+    }
+    
+    header h1 {
+        font-size: 1.5rem;
+    }
 }
 
 /* ===== Holdings Header with View Toggle ===== */
@@ -557,7 +647,7 @@ select:focus, input:focus {
 /* ===== Holdings Cards Grid ===== */
 .holdings-cards-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
     gap: 1rem;
 }
 

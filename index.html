@@ -124,7 +124,7 @@
 
                     <section class="card">
                         <h2>📊 계좌별 요약</h2>
-                        <div style="height:300px; margin-bottom: 2rem;"><canvas id="summaryChart"></canvas></div>
+                        <div class="chart-container-sm" style="margin-bottom: 2rem;"><canvas id="summaryChart"></canvas></div>
                         <div class="table-wrapper">
                             <table id="summary-table">
                                 <thead>
@@ -236,9 +236,9 @@
         <!-- 2. MDD 분석 탭 -->
         <div id="mdd-tab" class="tab-content">
             <section class="card">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap: wrap; gap: 1rem;">
                     <h2>📉 종목 하락장 분석 (MDD & Recovery)</h2>
-                    <div style="display:flex; gap:0.5rem; width:300px">
+                    <div class="mdd-search-container" style="display:flex; gap:0.5rem; width:100%; max-width:300px">
                         <input type="text" id="mdd-ticker" placeholder="Ticker (예: TSLA)" style="flex:1">
                         <button id="mdd-analyze-btn" onclick="analyzeMDD()" class="submit-btn" style="margin:0; padding:0 1.5rem">분석 🔍</button>
                     </div>
@@ -252,13 +252,13 @@
                         <!-- 주가 및 낙폭 차트 -->
                         <div class="card" style="background:rgba(0,0,0,0.2); border:none; padding:1rem">
                             <h3 style="font-size:0.9rem; color:var(--text-muted); margin-bottom:1rem">Price History & Drawdown</h3>
-                            <div style="height:400px;"><canvas id="mddChart"></canvas></div>
+                            <div class="chart-container-md"><canvas id="mddChart"></canvas></div>
                         </div>
 
                         <!-- 회복 기간 차트 -->
                         <div class="card" style="background:rgba(0,0,0,0.2); border:none; padding:1rem">
                             <h3 style="font-size:0.9rem; color:var(--text-muted); margin-bottom:1rem">Recovery Duration Analysis</h3>
-                            <div style="height:350px;"><canvas id="recoveryChart"></canvas></div>
+                            <div class="chart-container-sm"><canvas id="recoveryChart"></canvas></div>
                         </div>
                     </div>
 
