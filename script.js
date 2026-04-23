@@ -48,6 +48,8 @@ const PROXIES = [
 let globalHoldings = [];
 let usdKrwRate = 1400; // USD/KRW 환율 (기본값, Summary 시트에서 갱신)
 let isPrivacyMode = localStorage.getItem('privacy_mode') === 'true';
+// 뷰 모드 설정 (auto, pc, mobile)
+let userViewMode = localStorage.getItem('user_view_mode') || 'auto';
 
 let sortState = { column: 'weight', direction: 'desc' };
 let summaryChart = null;
@@ -199,7 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
- * 현재 화면 너비를 기준으로 PC/Mobile 모드 표시기 업데이트
+ * 현재 화면 너비 및 사용자 설정을 기준으로 PC/Mobile 모드 표시기 업데이트
  */
 function updateViewModeIndicator() {
     const textEl = document.getElementById('view-mode-text');
@@ -207,14 +209,59 @@ function updateViewModeIndicator() {
     const indicatorEl = document.getElementById('view-mode-indicator');
     if (!textEl || !iconEl || !indicatorEl) return;
 
-    if (window.innerWidth <= 768) {
-        textEl.textContent = 'Mobile mode';
+    // 1. 클래스 초기화
+    document.body.classList.remove('force-mobile', 'force-pc');
+    
+    // 2. 현재 모드 판정
+    let currentDisplayMode = '';
+    let labelPrefix = '';
+
+    if (userViewMode === 'auto') {
+        currentDisplayMode = window.innerWidth <= 768 ? 'mobile' : 'pc';
+        labelPrefix = 'Auto: ';
+    } else {
+        currentDisplayMode = userViewMode;
+        labelPrefix = 'Manual: ';
+        document.body.classList.add(`force-${userViewMode}`);
+    }
+
+    // 3. UI 업데이트
+    if (currentDisplayMode === 'mobile') {
+        textEl.textContent = labelPrefix + 'Mobile';
         iconEl.textContent = '📱';
         indicatorEl.style.color = 'var(--secondary)';
     } else {
-        textEl.textContent = 'PC mode';
+        textEl.textContent = labelPrefix + 'PC';
         iconEl.textContent = '💻';
         indicatorEl.style.color = 'var(--primary)';
+    }
+
+    // 4. 모바일에서 PC 모드 강제 시 뷰포트 조절 (선택 사항)
+    const viewport = document.querySelector('meta[name="viewport"]');
+    if (userViewMode === 'pc' && window.innerWidth <= 768) {
+        viewport.setAttribute('content', 'width=1200'); // 폰에서도 넓게 보이게 함
+    } else {
+        viewport.setAttribute('content', 'width=device-width, initial-scale=1.0');
+    }
+}
+
+/**
+ * 뷰 모드 순환 전환 (Auto -> PC -> Mobile)
+ */
+function cycleViewMode() {
+    if (userViewMode === 'auto') userViewMode = 'pc';
+    else if (userViewMode === 'pc') userViewMode = 'mobile';
+    else userViewMode = 'auto';
+
+    localStorage.setItem('user_view_mode', userViewMode);
+    updateViewModeIndicator();
+    
+    // 차트 크기 재조정을 위해 리사이즈 이벤트 발생
+    window.dispatchEvent(new Event('resize'));
+    
+    // 보유 종목 뷰 자동 전환 (모바일 모드일 때 카드 뷰)
+    if (userViewMode === 'mobile' || (userViewMode === 'auto' && window.innerWidth <= 768)) {
+        switchHoldingsView('cards');
     }
 }
 
