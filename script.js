@@ -97,6 +97,10 @@ function openTab(evt, tabName) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // 뷰 모드 표시기 초기 업데이트
+    updateViewModeIndicator();
+    window.addEventListener('resize', updateViewModeIndicator);
+
     // 모바일 기기 감지 시 카드 뷰를 기본으로 설정
     if (window.innerWidth < 768) {
         switchHoldingsView('cards');
@@ -114,6 +118,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetchData();
     }, 1500);
 });
+
+/**
+ * 현재 화면 너비를 기준으로 PC/Mobile 모드 표시기 업데이트
+ */
+function updateViewModeIndicator() {
+    const textEl = document.getElementById('view-mode-text');
+    const iconEl = document.getElementById('view-mode-icon');
+    if (!textEl || !iconEl) return;
+
+    if (window.innerWidth <= 768) {
+        textEl.textContent = 'Mobile mode';
+        iconEl.textContent = '📱';
+        document.getElementById('view-mode-indicator').style.color = 'var(--secondary)';
+    } else {
+        textEl.textContent = 'PC mode';
+        iconEl.textContent = '💻';
+        document.getElementById('view-mode-indicator').style.color = 'var(--primary)';
+    }
+}
 
 async function fetchData() {
 

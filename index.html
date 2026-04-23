@@ -16,12 +16,18 @@
                 <p class="subtitle">데이터로 보는 스마트한 투자 생활</p>
             </div>
             <div class="header-right">
-                <div class="privacy-toggle-container">
-                    <span class="privacy-label">🕶️ Privacy Mode</span>
-                    <label class="switch">
-                        <input type="checkbox" id="privacy-toggle">
-                        <span class="slider round"></span>
-                    </label>
+                <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+                    <div id="view-mode-indicator" class="view-mode-container">
+                        <span id="view-mode-icon"></span>
+                        <span id="view-mode-text" class="view-mode-label">감지 중...</span>
+                    </div>
+                    <div class="privacy-toggle-container">
+                        <span class="privacy-label">🕶️ Privacy Mode</span>
+                        <label class="switch">
+                            <input type="checkbox" id="privacy-toggle">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
                 </div>
                 <div id="last-updated" class="timestamp">업데이트 확인 중...</div>
             </div>
