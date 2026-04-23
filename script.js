@@ -115,8 +115,8 @@ function initDashboard() {
         });
     }
 
-    // 📅 기본 날짜 설정
-    const dateInput = document.getElementById('input-date');
+    // 📅 기본 날짜 설정 (ID 수정: input-date -> date-input)
+    const dateInput = document.getElementById('date-input');
     if (dateInput) dateInput.value = new Date().toISOString().split('T')[0];
 
     // 📅 MDD 분석용 날짜 설정 (최근 10년)
@@ -133,7 +133,7 @@ function initDashboard() {
     // 🔄 거래 종류에 따라 입력 필드 토글
     document.getElementById('type-select')?.addEventListener('change', (e) => {
         const type = e.target.value;
-        const tickerGroup = document.getElementById('stock-group'); // 종목 그룹 ID 확인 필요 (stock-group 또는 ticker-group)
+        const tickerGroup = document.getElementById('stock-group');
         const priceGroup = document.getElementById('price-group');
         const qtyLabel = document.getElementById('qty-label');
 
@@ -146,7 +146,6 @@ function initDashboard() {
             if (priceGroup) priceGroup.style.display = 'none';
             if (qtyLabel) qtyLabel.textContent = '배당금액';
         } else {
-            // 매수 / 매도
             if (tickerGroup) tickerGroup.style.display = 'flex';
             if (priceGroup) priceGroup.style.display = 'flex';
             if (qtyLabel) qtyLabel.textContent = '수량';
@@ -158,20 +157,20 @@ function initDashboard() {
 
     // 10분마다 자동 새로고침
     setInterval(() => {
-        fetchData();
+        fetchData(false); // 자동 새로고침 시에는 구글 시트 강제 갱신 안 함
     }, 10 * 60 * 1000);
 
     const refreshBtn = document.getElementById('refresh-fab');
     if (refreshBtn) refreshBtn.addEventListener('click', () => {
-        // 버튼 로딩 상태 표시
         refreshBtn.classList.add('loading');
-        fetchData().finally(() => {
-            setTimeout(() => refreshBtn.classList.remove('loading'), 1000);
+        // 수동 갱신 시에는 시장 데이터 갱신 요청 포함
+        requestMarketRefresh().then(() => {
+            setTimeout(() => fetchData(), 1000);
         });
     });
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
     // 뷰 모드 표시기 초기 업데이트
     updateViewModeIndicator();
     window.addEventListener('resize', updateViewModeIndicator);
@@ -184,17 +183,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         switchHoldingsView('cards');
     }
 
-    // 페이지 로드 시 구글 시트 데이터 강제 갱신 요청
+    // 페이지 로드 시 구글 시트 데이터 갱신 요청 (Non-blocking)
     const refreshFab = document.getElementById('refresh-fab');
     if (refreshFab) refreshFab.classList.add('loading');
     
-    console.log("🔄 페이지 로드: 구글 시트 데이터 갱신 요청 중...");
-    await requestMarketRefresh();
+    console.log("🔄 대시보드 로드 시작...");
     
-    // 약간의 대기 후 데이터 로드 (GAS 처리가 시작될 시간을 벌어줌)
-    setTimeout(() => {
-        fetchData();
-    }, 1500);
+    // 시장 데이터 갱신을 백그라운드에서 요청하고 바로 데이터 로딩 시작
+    requestMarketRefresh().finally(() => {
+        // GAS 처리가 시작될 시간을 약간 벌어준 후 데이터 페치
+        setTimeout(() => {
+            fetchData();
+        }, 1500);
+    });
 });
 
 /**
@@ -220,23 +221,21 @@ function updateViewModeIndicator() {
 async function fetchData(shouldRefreshMarket = true) {
     const CACHE_KEY = 'dashboard_data_cache';
 
-    // 1. 캐시된 데이터가 있으면 즉시 렌더링 (Stale)
+    // 1. 캐시된 데이터가 있으면 즉시 렌더링
     const cachedData = localStorage.getItem(CACHE_KEY);
     if (cachedData) {
         try {
             const cache = JSON.parse(cachedData);
-            console.log("캐시된 데이터를 즉시 표시합니다.");
             renderFromData(cache);
-            updateTimestamp(false, "Cache (백그라운드 갱신 중...)");
-        } catch (e) {
-            console.warn("캐시 파싱 실패:", e);
-        }
+            updateTimestamp(false, "Cache");
+        } catch (e) { console.warn("Cache fail", e); }
     } else {
-        updateTimestamp(null, "⏳ 데이터 확인 중...");
+        updateTimestamp(null, "⏳ 데이터 로드 중...");
     }
 
     try {
-        // 2. 백그라운드에서 실시간 데이터 병렬 로드 (Revalidate)
+        // 2. 실시간 데이터 병렬 로드
+        console.log("실시간 데이터 페칭 시작...");
         const [summaryRes, holdingsRes, historyRes] = await Promise.all([
             fetchWithFallback(CONFIG.summaryURL),
             fetchWithFallback(CONFIG.holdingsURL),
@@ -251,17 +250,33 @@ async function fetchData(shouldRefreshMarket = true) {
                 timestamp: new Date().getTime()
             };
 
-            // 최신 데이터 렌더링 및 캐시 저장
             renderFromData(freshData);
             localStorage.setItem(CACHE_KEY, JSON.stringify(freshData));
-
             updateTimestamp(true, "Live");
-            console.log("실시간 데이터로 갱신 완료");
+            console.log("Live 데이터 업데이트 완료");
+        } else {
+            throw new Error("Empty response from all proxies");
         }
 
     } catch (err) {
-        console.error("실시간 데이터 로드 실패, 스냅샷 시도:", err);
-        // (기존 스냅샷 로직 생략 또는 통합)
+        console.warn("실시간 로드 실패, 스냅샷 시도:", err);
+        
+        try {
+            const snapshotRes = await fetch(CONFIG.snapshotURL + "?v=" + new Date().getTime());
+            if (snapshotRes.ok) {
+                const snapshot = await snapshotRes.json();
+                renderFromData(snapshot);
+                updateTimestamp(false, "Snapshot");
+            } else {
+                updateTimestamp(null, "❌ 데이터 로드 실패");
+            }
+        } catch (snapshotErr) {
+            console.error("최종 로드 실패", snapshotErr);
+            updateTimestamp(null, "❌ 서버 연결 불가");
+        }
+    } finally {
+        const refreshBtn = document.getElementById('refresh-fab');
+        if (refreshBtn) refreshBtn.classList.remove('loading');
     }
 
     if (shouldRefreshMarket) fetchSP500Data();
@@ -1787,9 +1802,12 @@ async function handleTransactionSubmit(e) {
 async function requestMarketRefresh() {
     try {
         const params = new URLSearchParams({ command: "refresh_market" });
-        fetch(CONFIG.gasURL, { method: 'POST', mode: 'no-cors', body: params });
+        console.log("시트 데이터 갱신 요청 중...");
+        // fetch promise를 반환하여 await 가능하게 함
+        return fetch(CONFIG.gasURL, { method: 'POST', mode: 'no-cors', body: params });
     } catch (e) {
         console.warn('Market refresh request failed:', e);
+        return Promise.resolve();
     }
 }
 
