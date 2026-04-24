@@ -21,15 +21,19 @@ jobs:
           node-version: '18'
 
       - name: Create Update Script
+        env:
+          SUMMARY_URL: ${{ secrets.SHEET_SUMMARY_URL }}
+          HOLDINGS_URL: ${{ secrets.SHEET_HOLDINGS_URL }}
+          HISTORY_URL: ${{ secrets.SHEET_HISTORY_URL }}
         run: |
           cat << 'EOF' > update_snapshot.js
           const fs = require('fs');
           const https = require('https');
 
           const CONFIG = {
-              summary: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=0&single=true&output=csv",
-              holdings: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=58859590&single=true&output=csv",
-              history: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=1345768416&single=true&output=csv"
+              summary: process.env.SUMMARY_URL,
+              holdings: process.env.HOLDINGS_URL,
+              history: process.env.HISTORY_URL
           };
 
           function fetchCSV(url) {
