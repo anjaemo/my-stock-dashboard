@@ -2,7 +2,7 @@ name: Auto Update Data Snapshot
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # 매일 한국 시간 오전 9시 (UTC 00:00) 실행
+    - cron: '0 * * * *'  # 매시간 정각 실행 (UTC 기준)
   workflow_dispatch:      # 수동 실행 가능
 
 permissions:

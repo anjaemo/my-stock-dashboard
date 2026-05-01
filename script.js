@@ -310,6 +310,43 @@ function cycleViewMode() {
     }
 }
 
+/**
+ * 사용자에게 알림 메시지를 표시하는 토스트 기능
+ */
+function showToast(message, type = 'info', duration = 5000) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    
+    let icon = 'ℹ️';
+    if (type === 'warning') icon = '⚠️';
+    if (type === 'error') icon = '❌';
+    if (type === 'success') icon = '✅';
+
+    toast.innerHTML = `
+        <span class="toast-icon">${icon}</span>
+        <span class="toast-message">${message}</span>
+        <button class="toast-close" onclick="this.parentElement.remove()">✕</button>
+    `;
+
+    container.appendChild(toast);
+
+    // 서서히 나타나기
+    setTimeout(() => toast.classList.add('show'), 10);
+
+    // 일정 시간 후 삭제
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
 async function fetchData(shouldRefreshMarket = true) {
     const CACHE_KEY = 'dashboard_data_cache';
 
@@ -366,12 +403,22 @@ async function fetchData(shouldRefreshMarket = true) {
                 const snapshot = await snapshotRes.json();
                 renderFromData(snapshot);
                 updateTimestamp(false, "Snapshot");
+                
+                // 최신값이 아님을 사용자에게 알림
+                let timeInfo = "";
+                if (snapshot.updatedAt) {
+                    const updateDate = new Date(snapshot.updatedAt);
+                    timeInfo = ` (${updateDate.getHours()}시 ${updateDate.getMinutes()}분 기준)`;
+                }
+                showToast(`실시간 연결 지연으로 인해 백업 데이터를 표시합니다.${timeInfo}`, 'warning');
             } else {
                 updateTimestamp(null, "❌ 데이터 로드 실패");
+                showToast("데이터를 불러오는데 실패했습니다. 네트워크를 확인해주세요.", 'error');
             }
         } catch (snapshotErr) {
             console.error("최종 로드 실패", snapshotErr);
             updateTimestamp(null, "❌ 서버 연결 불가");
+            showToast("서버에 연결할 수 없습니다.", 'error');
         }
     } finally {
         const refreshBtn = document.getElementById('refresh-fab');
