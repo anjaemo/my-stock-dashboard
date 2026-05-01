@@ -225,8 +225,8 @@ header h1 {
 
 /* Bento Grid Layout */
 .summary-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    display: grid !important;
+    grid-template-columns: repeat(6, 1fr) !important;
     gap: 1rem;
     margin-bottom: 1.5rem;
 }
@@ -287,21 +287,23 @@ header h1 {
     }
     
     body:not(.force-pc) .market-card {
-        padding: 0.5rem 0.1rem;
-        border-radius: 8px;
-        min-height: 60px;
+        padding: 0.4rem 0.1rem; /* 상하 패딩 추가 축소 */
+        border-radius: 6px;
+        min-height: 50px; /* 높이 축소 */
     }
 
     body:not(.force-pc) .market-card .label {
-        font-size: 0.5rem;
+        font-size: 0.45rem; /* 라벨 크기 축소 */
+        margin-bottom: 0.1rem;
     }
 
     body:not(.force-pc) .market-card .value {
-        font-size: 0.75rem;
+        font-size: 0.65rem; /* 값 크기 축소 */
+        letter-spacing: -0.02em;
     }
     
     body:not(.force-pc) .market-card .market-change {
-        font-size: 0.6rem;
+        font-size: 0.5rem; /* 변화율 크기 축소 */
     }
 }
 
@@ -541,14 +543,52 @@ body.force-pc .container {
         font-size: 1.4rem;
     }
 
-    body:not(.force-pc) .summary-cards {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 0.6rem;
+    /* 상단 요약 카드(6장) 및 마켓 카드(6장) 공통 최적화 - 한 줄로 고정 */
+    body:not(.force-pc) .summary-cards,
+    body:not(.force-pc) .market-cards {
+        grid-template-columns: repeat(6, 1fr) !important;
+        gap: 0.2rem !important;
+        margin-bottom: 1.5rem;
     }
     
-    body:not(.force-pc) .summary-card {
-        padding: 1rem 0.8rem;
+    body:not(.force-pc) .summary-card,
+    body:not(.force-pc) .market-card {
+        padding: 0.4rem 0.1rem !important;
+        border-radius: 6px;
+        min-height: 55px; 
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
     }
+
+    /* 라벨 크기 조절 (더 넓은 범위로 유동적 조절) */
+    body:not(.force-pc) .summary-card .label,
+    body:not(.force-pc) .market-card .label {
+        font-size: clamp(0.35rem, 2vw, 0.85rem) !important; /* 최소~최대 폭 확대 */
+        margin-bottom: 0.1rem !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        width: 100%;
+    }
+
+    /* 수치 크기 조절 (더 넓은 범위로 유동적 조절) */
+    body:not(.force-pc) .summary-card .value,
+    body:not(.force-pc) .market-card .value {
+        font-size: clamp(0.5rem, 3.2vw, 1.3rem) !important; /* 최소~최대 폭 확대 */
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1.1;
+    }
+    
+    /* 변화율 등 하단 텍스트 */
+    body:not(.force-pc) .market-change {
+        font-size: clamp(0.35rem, 1.8vw, 0.7rem) !important;
+        margin-top: 0.05rem;
+    }
+
     body:not(.force-pc) .table-wrapper table, 
     body:not(.force-pc) .table-wrapper thead, 
     body:not(.force-pc) .table-wrapper tbody, 
@@ -629,10 +669,6 @@ body.force-pc .container {
 }
 
 @media (max-width: 480px), body.force-mobile {
-    body:not(.force-pc) .summary-cards {
-        grid-template-columns: 1fr;
-    }
-
     body:not(.force-pc) .tab-btn {        flex: 1;
         padding: 0.6rem 0.5rem;
         font-size: 0.75rem;
@@ -1019,6 +1055,25 @@ body.force-pc .container {
     font-size: 0.85rem;
 }
 
+.rsi-tag {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.rsi-overbought {
+    background: var(--negative);
+    color: white;
+}
+
+.rsi-oversold {
+    background: var(--positive);
+    color: var(--bg-deep);
+}
+
 /* ===== Modal (Attachment 3) ===== */
 .modal-overlay {
     display: none;
@@ -1354,11 +1409,14 @@ body.force-pc .container {
     width: 100%;
     height: 480px; /* 320px -> 480px (50% 확대) */
     position: relative;
+    display: flex;
+    flex-direction: column;
 }
 
 .slide canvas {
     width: 100% !important;
-    height: 100% !important;
+    flex: 1;
+    min-height: 0;
 }
 
 .slider-nav {

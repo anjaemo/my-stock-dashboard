@@ -13,15 +13,7 @@ if (window.Chart) {
     Chart.defaults.plugins.tooltip.cornerRadius = 8;
 }
 
-const CONFIG = {
-    summaryURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=0&single=true&output=csv",
-    holdingsURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=58859590&single=true&output=csv",
-    historyURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyAvQcej4ON8V6_bjKeqDwbYP9SQL7gGWf9JPREaA5xzoFK3xrwqb4u1IL6lJYjUz5e0IZ9hGRkCKn/pub?gid=1345768416&single=true&output=csv",
-    snapshotURL: "data_snapshot.json",
-    gasURL: "https://script.google.com/macros/s/AKfycbxw91Dsk1hyInzxt5qreyDbjKsWFgpSZAwx9C4G-tt0B7BpkQs2N3FJRQD1xupVofBSiQ/exec",
-    supabaseURL: "", // 사용자 제공 필요
-    supabaseKey: ""  // 사용자 제공 필요
-};
+// 💡 설정(CONFIG)은 외부 config.js 파일에서 로드됩니다.
 
 // Supabase 데이터 로드 예시 함수
 async function fetchFromSupabase(table) {
@@ -40,16 +32,14 @@ async function fetchFromSupabase(table) {
     }
 }
 
-const PROXIES = [
-    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-];
-
+// 뷰 모드 설정 (auto, pc, mobile)
 let globalHoldings = [];
 let usdKrwRate = 1400; // USD/KRW 환율 (기본값, Summary 시트에서 갱신)
 let isPrivacyMode = localStorage.getItem('privacy_mode') === 'true';
-// 뷰 모드 설정 (auto, pc, mobile)
 let userViewMode = localStorage.getItem('user_view_mode') || 'auto';
+
+let rawHistoryData = [];
+let currentHistoryRange = 'ALL';
 
 let sortState = { column: 'weight', direction: 'desc' };
 let summaryChart = null;
@@ -78,6 +68,19 @@ function maskValue(val, isName = false) {
         return '●●●,●●●';
     }
     return val;
+}
+
+/**
+ * 주식 티커 포맷팅 (한국 주식 6자리 숫자 처리 등)
+ */
+function formatTicker(ticker) {
+    if (!ticker) return ticker;
+    const cleanTicker = ticker.trim().toUpperCase();
+    if (/^\d{6}$/.test(cleanTicker)) {
+        // 기본적으로 .KS를 붙이되, 향후 시장 구분 로직 확장 가능
+        return cleanTicker + ".KS";
+    }
+    return cleanTicker;
 }
 
 // 📑 탭 전환 함수
@@ -187,9 +190,11 @@ function initDashboard() {
     // 폼 제출 이벤트
     document.getElementById('transaction-form')?.addEventListener('submit', handleTransactionSubmit);
 
-    // 10분마다 자동 새로고침
+    // 10분마다 자동 새로고침 (활성 탭일 때만)
     setInterval(() => {
-        fetchData(false); // 자동 새로고침 시에는 구글 시트 강제 갱신 안 함
+        if (document.visibilityState === 'visible') {
+            fetchData(false); // 자동 새로고침 시에는 구글 시트 강제 갱신 안 함
+        }
     }, 10 * 60 * 1000);
 
     const refreshBtn = document.getElementById('refresh-fab');
@@ -377,7 +382,8 @@ function renderFromData(data) {
         processHoldingsData(data.holdings);
     }
     if (data.history) {
-        renderHistoryChart(data.history);
+        rawHistoryData = data.history;
+        renderHistoryChartWithRange();
     }
 }
 
@@ -482,7 +488,7 @@ async function fetchSP500Data() {
                             rsiCell.innerHTML = `<span class="rsi-tag ${rsiClass}">${rsiValue.toFixed(1)}</span>`;
                         }
                     }
-                } catch (e) { }
+                } catch (e) { console.warn("Resource cleanup/fetch error:", e); }
             }));
             // API 차단 방지를 위한 짧은 휴식 (50ms)
             await new Promise(resolve => setTimeout(resolve, 50));
@@ -618,13 +624,12 @@ function parseYahooData(result, ticker) {
 }
 // 📉 MDD 분석 로직
 async function analyzeMDD() {
-    const tickerInput = document.getElementById('mdd-ticker').value.trim().toUpperCase();
+    const tickerInput = document.getElementById('mdd-ticker').value;
     const analyzeBtn = document.getElementById('mdd-analyze-btn');
 
-    if (!tickerInput) { alert("티커를 입력해주세요!"); return; }
+    if (!tickerInput || !tickerInput.trim()) { alert("티커를 입력해주세요!"); return; }
 
-    let ticker = tickerInput;
-    if (/^\d{6}$/.test(ticker)) ticker += ".KS";
+    const ticker = formatTicker(tickerInput);
 
     // 기간 설정 (최근 10년)
     const p2 = Math.floor(Date.now() / 1000);
@@ -866,50 +871,45 @@ async function updateMarketCharts() {
             const valEl = document.getElementById(`card-${m.id}-val`);
             const chgEl = document.getElementById(`card-${m.id}-change`);
             
-            // 티커 인코딩 처리 (^ 기호 등 대응) 및 범위를 1일로 변경
             const encodedTicker = encodeURIComponent(m.ticker);
-            const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodedTicker}?interval=15m&range=1d`;
+            const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodedTicker}?interval=1d&range=1d`;
             
-            // 1. GAS 프록시 시도
             let result = await fetchViaGASProxy(targetUrl);
-            
-            // 2. GAS 실패 시 공용 프록시 시도
-            if (!result) {
-                console.warn(`${m.id} GAS 프록시 실패, 공용 프록시 시도...`);
-                result = await fetchViaPublicProxy(targetUrl);
-            }
+            if (!result) result = await fetchViaPublicProxy(targetUrl);
 
-            const history = parseYahooData(result, m.ticker);
+            if (result && result.type === 'json') {
+                const meta = result.data.chart?.result?.[0]?.meta;
+                if (meta) {
+                    const lastPrice = meta.regularMarketPrice;
+                    const prevClose = meta.chartPreviousClose || meta.previousClose;
+                    
+                    if (lastPrice && prevClose) {
+                        const changePercent = ((lastPrice / prevClose - 1) * 100).toFixed(2);
+                        const isPositive = parseFloat(changePercent) >= 0;
 
-            if (history && history.length >= 2) {
-                // 가장 최근 데이터와 그 이전 데이터 (영업일 기준)
-                const last = history[history.length - 1];
-                const prev = history[history.length - 2];
-                const changePercent = ((last.close / prev.close - 1) * 100).toFixed(2);
-                const isPositive = parseFloat(changePercent) >= 0;
-
-                if (valEl) {
-                    if (m.id === 'fx') {
-                        valEl.textContent = last.close.toFixed(2);
-                        usdKrwRate = last.close;
-                    } else {
-                        // 지수는 소수점 둘째자리까지 표시
-                        valEl.textContent = last.close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        if (valEl) {
+                            if (m.id === 'fx') {
+                                valEl.textContent = lastPrice.toFixed(2);
+                                usdKrwRate = lastPrice;
+                            } else {
+                                valEl.textContent = lastPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                            }
+                        }
+                        
+                        if (chgEl) {
+                            chgEl.textContent = `${isPositive ? '+' : ''}${changePercent}%`;
+                            chgEl.className = `market-change ${isPositive ? 'value-up' : 'value-down'}`;
+                        }
+                        return;
                     }
                 }
-                
-                if (chgEl) {
-                    chgEl.textContent = `${isPositive ? '+' : ''}${changePercent}%`;
-                    chgEl.className = `market-change ${isPositive ? 'value-up' : 'value-down'}`;
-                }
-            } else if (history && history.length === 1) {
-                // 데이터가 하나뿐일 경우 현재가만 표시
-                const last = history[0];
+            }
+
+            // 폴백: 기존 파싱 로직 시도 (데이터 부족 시)
+            const history = parseYahooData(result, m.ticker);
+            if (history && history.length > 0) {
+                const last = history[history.length - 1];
                 if (valEl) valEl.textContent = last.close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                if (chgEl) chgEl.textContent = "-";
-            } else {
-                if (valEl) valEl.textContent = "Error";
-                console.error(`❌ ${m.id} 모든 경로 시도 실패`);
             }
         } catch (e) {
             console.error(`🚨 ${m.id} 업데이트 오류:`, e);
@@ -945,7 +945,7 @@ async function fetchViaPublicProxy(url) {
                 const text = await response.text();
                 if (text.includes('"chart"')) return { type: 'json', data: JSON.parse(text) };
             }
-        } catch (e) {}
+        } catch (e) { console.warn("Fetch error:", e); }
     }
     return null;
 }
@@ -1138,7 +1138,7 @@ function renderHoldingsCards() {
     grid.innerHTML = '';
 
     // Destroy existing sparkline charts
-    Object.values(sparklineCharts).forEach(c => { try { c.destroy(); } catch (e) { } });
+    Object.values(sparklineCharts).forEach(c => { try { c.destroy(); } catch (e) { console.warn("Resource cleanup/fetch error:", e); } });
 
     // --- 상승/하락 카운터 ---
     const upCount = globalHoldings.filter(h => h.dailyChange >= 0).length;
@@ -1251,7 +1251,7 @@ function drawSparkline(canvasId, item, isPositive) {
     const color = isPositive ? '#4ade80' : '#fb7185';
 
     if (sparklineCharts[canvasId]) {
-        try { sparklineCharts[canvasId].destroy(); } catch (e) { }
+        try { sparklineCharts[canvasId].destroy(); } catch (e) { console.warn("Resource cleanup/fetch error:", e); }
     }
 
     const gradient = ctx.createLinearGradient(0, 0, 0, 40);
@@ -1461,7 +1461,7 @@ function drawIntradayChart(item, labels = null, prices = null) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
-    if (intradayChart) { try { intradayChart.destroy(); } catch (e) { } }
+    if (intradayChart) { try { intradayChart.destroy(); } catch (e) { console.warn("Resource cleanup/fetch error:", e); } }
 
     const isPositive = item.dailyChange >= 0;
     const color = isPositive ? '#4ade80' : '#fb7185';
@@ -1551,8 +1551,7 @@ function generateIntradayPrices(dailyChange, count) {
 
 async function fetchIntradayData(item) {
     try {
-        let ticker = item.ticker;
-        if (/^\d{6}$/.test(ticker)) ticker += '.KS';
+        const ticker = formatTicker(item.ticker);
 
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=15m&range=1d`;
         const result = await fetchWithFallback(url, true);
@@ -1676,6 +1675,13 @@ function renderSummaryChart(labels, investData, evalData) {
 function renderHistoryChart(data) {
     const canvas = document.getElementById('historyChart'); if (!canvas || !data) return;
     const ctx = canvas.getContext('2d');
+    
+    // 기존 차트 객체가 있으면 완전히 파괴 (중복 렌더링 방지)
+    if (historyChart) {
+        historyChart.destroy();
+        historyChart = null;
+    }
+
     const dates = [], evals = [], invests = [], incomes = [], dividends = [];
 
     data.slice(1).forEach(row => {
@@ -1686,8 +1692,6 @@ function renderHistoryChart(data) {
         incomes.push(parseSafeFloat(row[3]) / 10000000);
         dividends.push(parseSafeFloat(row[11]) / 10000000);
     });
-
-    if (historyChart) historyChart.destroy();
 
     historyChart = new Chart(ctx, {
         type: 'line',
@@ -1744,6 +1748,9 @@ function renderHistoryChart(data) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: {
+                duration: 500 // 데이터 전환 시 부드러운 애니메이션 추가
+            },
             interaction: { mode: 'index', intersect: false },
             scales: {
                 y: {
@@ -1792,6 +1799,87 @@ function renderHistoryChart(data) {
             }
         }
     });
+}
+
+function updateHistoryRange(range, btn) {
+    currentHistoryRange = range;
+    
+    // 버튼 UI 업데이트
+    const buttons = document.querySelectorAll('#history-filter-group .sort-btn');
+    buttons.forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    renderHistoryChartWithRange();
+}
+
+function renderHistoryChartWithRange() {
+    if (!rawHistoryData || rawHistoryData.length <= 1) return;
+
+    const headers = rawHistoryData[0];
+    const dataRows = rawHistoryData.slice(1).filter(row => row && row[0] && row[0].trim() !== "");
+    
+    if (currentHistoryRange === 'ALL' || dataRows.length === 0) {
+        renderHistoryChart(rawHistoryData);
+        return;
+    }
+
+    // 헬퍼: YY.MM.DD 형식을 안전하게 Date 객체로 변환
+    const parseDate = (str) => {
+        if (!str) return new Date(NaN);
+        // 점(.)으로 분리하여 년, 월, 일 추출
+        const parts = str.trim().replace(/\.$/, '').split('.');
+        if (parts.length === 3) {
+            let y = parseInt(parts[0].trim());
+            let m = parseInt(parts[1].trim()) - 1; // 월은 0부터 시작
+            let d = parseInt(parts[2].trim());
+            
+            // 2자리 연도(YY) 처리 (예: 26 -> 2026)
+            if (y < 100) y += 2000;
+            
+            const dateObj = new Date(y, m, d);
+            if (!isNaN(dateObj.getTime())) return dateObj;
+        }
+        return new Date(NaN);
+    };
+
+    // 모든 데이터를 Date 객체와 함께 매핑
+    const rowsWithDate = dataRows.map(row => ({
+        date: parseDate(row[0]),
+        row: row
+    })).filter(item => !isNaN(item.date.getTime()));
+
+    if (rowsWithDate.length === 0) {
+        renderHistoryChart(rawHistoryData);
+        return;
+    }
+
+    // 데이터 중 가장 최신 날짜 찾기
+    const latestDate = new Date(Math.max(...rowsWithDate.map(item => item.date.getTime())));
+
+    // 시작 날짜 계산
+    let startDate = new Date(latestDate);
+    const value = parseInt(currentHistoryRange);
+    const unit = currentHistoryRange.slice(-1);
+
+    if (currentHistoryRange === 'YTD') {
+        startDate = new Date(latestDate.getFullYear(), 0, 1);
+    } else if (unit === 'M') {
+        startDate.setMonth(latestDate.getMonth() - value);
+    } else if (unit === 'Y') {
+        startDate.setFullYear(latestDate.getFullYear() - value);
+    }
+
+    // 필터링 실행
+    const filteredRows = rowsWithDate
+        .filter(item => item.date >= startDate)
+        .map(item => item.row);
+
+    // 필터링된 데이터로 그래프 렌더링 (헤더 포함)
+    if (filteredRows.length > 0) {
+        renderHistoryChart([headers, ...filteredRows]);
+    } else {
+        renderHistoryChart(rawHistoryData);
+    }
 }
 
 function filterBubbleChart(currency, btn) {

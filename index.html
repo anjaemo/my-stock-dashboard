@@ -36,6 +36,7 @@
         <nav class="tabs">
             <button class="tab-btn active" onclick="openTab(event, 'portfolio-tab')">📊 포트폴리오</button>
             <button class="tab-btn" onclick="openTab(event, 'mdd-tab')">📉 MDD 분석</button>
+            <button class="tab-btn" onclick="openTab(event, 'sp500-tab')">🇺🇸 S&P 500</button>
         </nav>
 
         <!-- 1. 포트폴리오 탭 -->
@@ -109,6 +110,17 @@
                             <div class="slider-wrapper" id="chart-slider">
                                 <!-- 슬라이드 1: 자산 추이 -->
                                 <div class="slide">
+                                    <div class="chart-filter-container">
+                                        <div class="holdings-sort-group" id="history-filter-group">
+                                            <button class="sort-btn" onclick="updateHistoryRange('1M', this)">1달</button>
+                                            <button class="sort-btn" onclick="updateHistoryRange('3M', this)">3달</button>
+                                            <button class="sort-btn" onclick="updateHistoryRange('1Y', this)">1년</button>
+                                            <button class="sort-btn" onclick="updateHistoryRange('YTD', this)">YTD</button>
+                                            <button class="sort-btn" onclick="updateHistoryRange('3Y', this)">3년</button>
+                                            <button class="sort-btn" onclick="updateHistoryRange('5Y', this)">5년</button>
+                                            <button class="sort-btn active" onclick="updateHistoryRange('ALL', this)">전체</button>
+                                        </div>
+                                    </div>
                                     <canvas id="historyChart"></canvas>
                                 </div>
                                 <!-- 슬라이드 2: 리스크 분석 -->
@@ -297,6 +309,39 @@
                 </div>
             </section>
         </div>
+
+        <!-- 3. S&P 500 탭 -->
+        <div id="sp500-tab" class="tab-content">
+            <section class="mdd-container">
+                <div class="mdd-header">
+                    <h2 class="section-title">🇺🇸 S&P 500 상위 100 분석</h2>
+                    <p id="sp500-status" class="status-msg">데이터 로딩 대기 중...</p>
+                </div>
+                
+                <div class="card glass">
+                    <div class="table-container">
+                        <table id="sp500-table">
+                            <thead>
+                                <tr>
+                                    <th>순위</th>
+                                    <th>티커</th>
+                                    <th>종목명</th>
+                                    <th>현재가</th>
+                                    <th>변동률</th>
+                                    <th>RSI(14)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- script.js에서 데이터 채워짐 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="margin-top: 1rem; font-size: 0.8rem; color: var(--text-muted);">
+                        * RSI 70 이상: <span class="rsi-tag rsi-overbought">과매수</span> / RSI 30 이하: <span class="rsi-tag rsi-oversold">과매도</span>
+                    </div>
+                </div>
+            </section>
+        </div>
     </div>
 
     <!-- Stock Detail Modal -->
@@ -380,6 +425,7 @@
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="config.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
