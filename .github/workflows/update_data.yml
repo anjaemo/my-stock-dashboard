@@ -11,6 +11,10 @@ permissions:
 jobs:
   update-data:
     runs-on: ubuntu-latest
+    env:
+      SUMMARY_URL: ${{ secrets.SHEET_SUMMARY_URL }}
+      HOLDINGS_URL: ${{ secrets.SHEET_HOLDINGS_URL }}
+      HISTORY_URL: ${{ secrets.SHEET_HISTORY_URL }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,10 +25,6 @@ jobs:
           node-version: '18'
 
       - name: Create Update Script
-        env:
-          SUMMARY_URL: ${{ secrets.SHEET_SUMMARY_URL }}
-          HOLDINGS_URL: ${{ secrets.SHEET_HOLDINGS_URL }}
-          HISTORY_URL: ${{ secrets.SHEET_HISTORY_URL }}
         run: |
           cat << 'EOF' > update_snapshot.js
           const fs = require('fs');
@@ -35,16 +35,21 @@ jobs:
               history: process.env.HISTORY_URL
           };
 
-          async function fetchCSV(url) {
+          async function fetchCSV(name, url) {
               if (!url) {
-                  console.error("URL is missing for a component");
+                  console.error(`URL for ${name} is missing in environment variables.`);
                   return "";
               }
-              const response = await fetch(url);
-              if (!response.ok) {
-                  throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+              try {
+                  const response = await fetch(url);
+                  if (!response.ok) {
+                      throw new Error(`Failed to fetch ${name} (${url}): ${response.statusText}`);
+                  }
+                  return await response.text();
+              } catch (err) {
+                  console.error(`Error fetching ${name}:`, err.message);
+                  return "";
               }
-              return await response.text();
           }
 
           function parseCSV(csvText) {
@@ -76,11 +81,16 @@ jobs:
               try {
                   console.log('Fetching data from Google Sheets...');
                   const [s, h, hist] = await Promise.all([
-                      fetchCSV(CONFIG.summary),
-                      fetchCSV(CONFIG.holdings),
-                      fetchCSV(CONFIG.history)
+                      fetchCSV('Summary', CONFIG.summary),
+                      fetchCSV('Holdings', CONFIG.holdings),
+                      fetchCSV('History', CONFIG.history)
                   ]);
                   
+                  if (!s || !h || !hist) {
+                      console.error('One or more data sources could not be fetched.');
+                      process.exit(1);
+                  }
+
                   const summaryData = parseCSV(s);
                   const holdingsData = parseCSV(h);
                   const historyData = parseCSV(hist);
