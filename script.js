@@ -245,18 +245,6 @@ async function fetchHoldingsAnalysisData() {
                 } else if (kospiItem) {
                     item.marketCap = kospiItem.marketCap;
                     divYield = kospiItem.dividendYield;
-                } else {
-                    // Attempt fallback to v7/finance/quote via proxy
-                    try {
-                        const quoteUrl = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${ticker}`;
-                        const quoteRes = await fetchWithFallback(quoteUrl, true);
-                        if (quoteRes && quoteRes.type === 'json' && quoteRes.data.quoteResponse && quoteRes.data.quoteResponse.result.length > 0) {
-                            const q = quoteRes.data.quoteResponse.result[0];
-                            item.marketCap = q.marketCap || 0;
-                            if (q.dividendYield !== undefined) divYield = q.dividendYield.toFixed(2);
-                            else if (q.trailingAnnualDividendYield !== undefined) divYield = (q.trailingAnnualDividendYield * 100).toFixed(2);
-                        }
-                    } catch (e) {}
                 }
                 
                 // 1. 기본 정보 및 히스토리 (10년치 + 배당 정보)
@@ -264,21 +252,31 @@ async function fetchHoldingsAnalysisData() {
                 const historyRes = await fetchWithFallback(historyUrl, true);
                 
                 if (historyRes && historyRes.type === 'json') {
-                    const meta = historyRes.data.chart.result[0].meta;
+                    const chartResult = historyRes.data.chart.result[0];
+                    const meta = chartResult.meta;
                     item.price = meta.regularMarketPrice;
+                    
+                    // meta에서 시가총액 정보가 오면 우선 사용 (단, sp500/kospi 캐시가 더 정확할 수 있음)
+                    if (meta.marketCap && (!item.marketCap || item.marketCap === 0)) {
+                        item.marketCap = meta.marketCap;
+                    }
                     
                     // Use daily change directly from user's Google Sheet (Holdings / Summary)
                     item.change = item.display.dailyChange && item.display.dailyChange !== '-' ? item.display.dailyChange : (meta.chartPreviousClose ? ((item.price / meta.chartPreviousClose - 1) * 100).toFixed(2) : 0);
                     
                     // Calculate trailing 12 months dividend yield if missing
-                    if (divYield === "-" && historyRes.data.chart.result[0].events && historyRes.data.chart.result[0].events.dividends) {
-                        const divs = historyRes.data.chart.result[0].events.dividends;
+                    if (divYield === "-" && chartResult.events && chartResult.events.dividends) {
+                        const divs = chartResult.events.dividends;
                         const oneYearAgo = (Date.now() / 1000) - (365 * 24 * 60 * 60);
                         let totalDiv = 0;
                         for (const key in divs) {
                             if (divs[key].date >= oneYearAgo) totalDiv += divs[key].amount;
                         }
                         if (totalDiv > 0 && item.price > 0) divYield = ((totalDiv / item.price) * 100).toFixed(2);
+                    } else if (divYield === "-" && meta.dividendYield !== undefined) {
+                        divYield = meta.dividendYield.toFixed(2);
+                    } else if (divYield === "-" && meta.trailingAnnualDividendYield !== undefined) {
+                        divYield = (meta.trailingAnnualDividendYield * 100).toFixed(2);
                     }
                     item.dividendYield = divYield;
 
@@ -807,16 +805,25 @@ async function fetchData(shouldRefreshMarket = true) {
 
 // 데이터를 받아서 각 컴포넌트에 뿌려주는 통합 함수
 function renderFromData(data) {
-    if (data.summary) {
-        renderSummary(data.summary, document.querySelector('#summary-table tbody'));
-    }
-    if (data.holdings) {
-        processHoldingsData(data.holdings);
-    }
-    if (data.history) {
-        rawHistoryData = data.history;
-        renderHistoryChartWithRange();
-    }
+    console.log("데이터 렌더링 시작...", Object.keys(data));
+    try {
+        if (data.summary) {
+            renderSummary(data.summary, document.querySelector('#summary-table tbody'));
+        }
+    } catch (e) { console.error("Summary rendering failed:", e); }
+
+    try {
+        if (data.holdings) {
+            processHoldingsData(data.holdings);
+        }
+    } catch (e) { console.error("Holdings rendering failed:", e); }
+
+    try {
+        if (data.history) {
+            rawHistoryData = data.history;
+            renderHistoryChartWithRange();
+        }
+    } catch (e) { console.error("History rendering failed:", e); }
 }
 
 /**
@@ -1046,20 +1053,25 @@ async function fetchWithFallback(targetUrl, isYahoo = false) {
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const text = await response.text();
         
-        // 유효성 검사
-        if (!text || text.length < 20 || text.includes("<!DOCTYPE") || text.includes("<html")) {
-            throw new Error("Invalid data received");
+        // 1. 유효성 검사 (HTML 에러 페이지 필터링)
+        if (!text || text.length < 20 || text.includes("<!DOCTYPE") || text.includes("<html") || text.includes("Unauthorized")) {
+            throw new Error("Invalid data received (HTML or Unauthorized)");
         }
 
-        if (text.includes('"chart"') || text.includes('"result"')) {
+        // 2. JSON 데이터인 경우 (야후 파이낸스 등)
+        if (text.trim().startsWith('{') && (text.includes('"chart"') || text.includes('"result"'))) {
             return { type: 'json', data: JSON.parse(text) };
         }
         
-        const result = Papa.parse(text, { header: false, skipEmptyLines: true });
-        if (result.data && result.data.length > 0) {
-            return { type: 'csv', data: result.data };
+        // 3. CSV 데이터인 경우 (구글 시트)
+        if (text.includes(',') || text.includes('\t')) {
+            const result = Papa.parse(text, { header: false, skipEmptyLines: true });
+            if (result.data && result.data.length > 1) { // 최소 헤더 + 1개 행 이상
+                return { type: 'csv', data: result.data };
+            }
         }
-        throw new Error("Parsing failed");
+        
+        throw new Error("Parsing failed: Not a valid JSON chart or CSV");
     };
 
     const tasks = [];
@@ -1387,8 +1399,7 @@ async function updateMarketCharts() {
             const encodedTicker = encodeURIComponent(m.ticker);
             const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodedTicker}?interval=1d&range=1d`;
             
-            let result = await fetchViaGASProxy(targetUrl);
-            if (!result) result = await fetchViaPublicProxy(targetUrl);
+            const result = await fetchWithFallback(targetUrl, true);
 
             if (result && result.type === 'json') {
                 const meta = result.data.chart?.result?.[0]?.meta;
@@ -1417,54 +1428,23 @@ async function updateMarketCharts() {
                     }
                 }
             }
-
-            // 폴백: 기존 파싱 로직 시도 (데이터 부족 시)
-            const history = parseYahooData(result, m.ticker);
-            if (history && history.length > 0) {
-                const last = history[history.length - 1];
-                if (valEl) valEl.textContent = last.close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            }
         } catch (e) {
             console.error(`🚨 ${m.id} 업데이트 오류:`, e);
         }
     }));
 }
 
-// 시장 데이터 전용 프록시 함수들
-async function fetchViaGASProxy(url) {
-    if (!CONFIG.gasURL) return null;
-    try {
-        const response = await fetch(CONFIG.gasURL, {
-            method: 'POST',
-            body: JSON.stringify({ command: "proxy_yahoo", url: url })
-        });
-        if (response.ok) {
-            const text = await response.text();
-            if (text.includes('"chart"')) return { type: 'json', data: JSON.parse(text) };
-        }
-    } catch (e) { return null; }
-    return null;
-}
-
-async function fetchViaPublicProxy(url) {
-    const proxies = [
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-        `https://corsproxy.io/?${encodeURIComponent(url)}`
-    ];
-    for (const p of proxies) {
-        try {
-            const response = await fetch(p);
-            if (response.ok) {
-                const text = await response.text();
-                if (text.includes('"chart"')) return { type: 'json', data: JSON.parse(text) };
-            }
-        } catch (e) { console.warn("Fetch error:", e); }
-    }
-    return null;
-}
-
 function renderSummary(data, tableElement) {
-    if (!tableElement || !data) return;
+    if (!data || !Array.isArray(data)) {
+        console.warn("Invalid summary data format:", data);
+        return;
+    }
+    if (!tableElement) {
+        console.warn("Summary table element not found");
+        return;
+    }
+    
+    console.log(`요약 데이터 렌더링 시작: ${data.length}행 발견`);
     tableElement.innerHTML = '';
 
     // 스켈레톤 제거
@@ -1555,7 +1535,11 @@ function renderSummary(data, tableElement) {
 }
 
 function processHoldingsData(data) {
-    if (!data) return;
+    if (!data || !Array.isArray(data)) {
+        console.warn("Invalid holdings data format:", data);
+        return;
+    }
+    console.log(`보유 종목 데이터 처리 시작: ${data.length}행 발견`);
     globalHoldings = [];
 
     // 매매 기록용 종목 선택 드롭다운 초기화
@@ -1598,6 +1582,9 @@ function processHoldingsData(data) {
             display: { weight: row[9], returnRate: row[7], evalKRW: row[8], profitKRW: row[14], dailyChange: row[10], currentPrice: row[5] || row[8] }
         });
     });
+    
+    console.log(`보유 종목 처리 완료: ${globalHoldings.length}종목 추출됨`);
+    
     // 리스크 분석 필터 초기화 (전체로 리셋)
     const bubbleFilters = document.querySelectorAll('#bubble-filter-group .sort-btn');
     bubbleFilters.forEach((btn, idx) => {
