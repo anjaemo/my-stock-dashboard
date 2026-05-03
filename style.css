@@ -536,6 +536,10 @@ body.force-pc .container {
     padding: 2rem !important;
 }
 
+/* 기본값: 전체 값 표시, 축약 값 숨김 */
+.short-val { display: none; }
+.full-val { display: inline; }
+
 @media (max-width: 768px), body.force-mobile {
     /* PC 강제 모드(.force-pc)가 아닐 때만 적용 */
     body:not(.force-pc) .container {
@@ -595,6 +599,10 @@ body.force-pc .container {
         font-size: clamp(0.35rem, 1.8vw, 0.7rem) !important;
         margin-top: 0.05rem;
     }
+
+    /* 모바일에서 큰 숫자 축약 표시 */
+    body:not(.force-pc) .full-val { display: none; }
+    body:not(.force-pc) .short-val { display: inline; }
 
     body:not(.force-pc) .table-wrapper table, 
     body:not(.force-pc) .table-wrapper thead, 

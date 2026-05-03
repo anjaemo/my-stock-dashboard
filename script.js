@@ -81,6 +81,37 @@ function maskValue(val, isName = false) {
 }
 
 /**
+ * 큰 숫자를 모바일에서 짧게(만, 억) 표시하기 위한 HTML 생성
+ * @param {string} valStr 원래 표시할 문자열 (예: "15,000,000")
+ * @returns {string} 반응형 클래스가 적용된 HTML 문자열
+ */
+function getResponsiveValueHTML(valStr) {
+    if (!valStr || valStr === "-" || typeof valStr !== 'string') return valStr;
+    // 마스킹된 값이거나 비율(%)이면 그대로 반환
+    if (valStr.includes('●') || valStr.includes('%')) return valStr;
+    
+    // 원본에서 숫자만 추출 (음수 기호 포함)
+    const numStr = valStr.replace(/[^\d.-]/g, '');
+    const num = Number(numStr);
+    
+    if (!isNaN(num) && Math.abs(num) >= 10000) {
+        let shortStr = "";
+        const absNum = Math.abs(num);
+        const sign = num < 0 ? "-" : (valStr.startsWith("+") ? "+" : "");
+        if (absNum >= 100000000) { // 1억 이상
+            shortStr = sign + (absNum / 100000000).toFixed(2).replace(/\.?0+$/, '') + "억";
+        } else if (absNum >= 10000) { // 1만 이상
+            shortStr = sign + (absNum / 10000).toFixed(0) + "만";
+        }
+        
+        if (shortStr) {
+            return `<span class="full-val">${valStr}</span><span class="short-val">${shortStr}</span>`;
+        }
+    }
+    return valStr;
+}
+
+/**
  * 주식 티커 포맷팅 (한국 주식 6자리 숫자 처리 등)
  */
 function formatTicker(ticker) {
@@ -1145,7 +1176,8 @@ function renderSummary(data, tableElement) {
             // 현재 평가액 카드 업데이트 (KRW + USD 병기)
             const evalValEl = document.getElementById('card-eval-val');
             if (evalValEl) {
-                let evalText = maskValue(totalRow[1]);
+                const evalTextKRW = maskValue(totalRow[1]);
+                let evalText = getResponsiveValueHTML(evalTextKRW);
                 if (usdKrwRate > 0 && evalKRW > 10000) { 
                     const evalUSD = evalKRW / usdKrwRate;
                     evalText += ` <span class="value-sub">($${evalUSD.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})})</span>`;
@@ -1153,10 +1185,10 @@ function renderSummary(data, tableElement) {
                 evalValEl.innerHTML = evalText || "-";
             }
 
-            document.getElementById('card-invest-val').textContent = maskValue(totalRow[2]) || "-";
+            document.getElementById('card-invest-val').innerHTML = getResponsiveValueHTML(maskValue(totalRow[2])) || "-";
             
             const profitElem = document.getElementById('card-profit-val');
-            profitElem.textContent = maskValue(totalRow[3]) || "0";
+            profitElem.innerHTML = getResponsiveValueHTML(maskValue(totalRow[3])) || "0";
             profitElem.className = 'value ' + getColorClass(totalRow[3]);
             
             const rateElem = document.getElementById('card-rate-val');
@@ -1165,11 +1197,11 @@ function renderSummary(data, tableElement) {
 
             const dailyElem = document.getElementById('card-daily-val');
             if (dailyElem) {
-                dailyElem.textContent = maskValue(totalRow[6]) || "0";
+                dailyElem.innerHTML = getResponsiveValueHTML(maskValue(totalRow[6])) || "0";
                 dailyElem.className = 'value ' + getColorClass(totalRow[6]);
             }
 
-            document.getElementById('card-dividend-val').textContent = maskValue(totalRow[11]) || "0";
+            document.getElementById('card-dividend-val').innerHTML = getResponsiveValueHTML(maskValue(totalRow[11])) || "0";
         }
     } catch (e) { console.warn("Summary parsing error", e); }
 
