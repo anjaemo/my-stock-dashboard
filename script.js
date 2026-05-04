@@ -196,16 +196,16 @@ function calculateMDDAndRecovery(closes) {
     const count = drawdowns.filter(d => d >= threshold).length;
     const prob = closes.length > 0 ? ((count / closes.length) * 100).toFixed(1) : "0.0";
 
-    return { mdd: (mdd * 100).toFixed(2), recoveryProb: prob };
+    return { mdd: (currentDrawdown * 100).toFixed(2), recoveryProb: prob };
 }
 
-async function fetchHoldingsAnalysisData() {
+async function fetchHoldingsAnalysisData(force = false) {
     const tableBody = document.querySelector('#holdings-analysis-table tbody');
     const statusText = document.getElementById('holdings-analysis-status');
     if (!tableBody || !globalHoldings || globalHoldings.length === 0) return;
 
     // 이미 데이터가 있고 분석이 완료된 상태라면 재분석하지 않음 (수동 새로고침 시에만 갱신)
-    if (holdingsAnalysisData.length > 0 && holdingsAnalysisData.every(d => d.rsi !== "-")) {
+    if (!force && holdingsAnalysisData.length > 0 && holdingsAnalysisData.every(d => d.rsi !== "-")) {
         renderHoldingsAnalysisTable();
         return;
     }
@@ -1037,6 +1037,21 @@ function renderKOSPI200Table() {
         `;
         tableBody.appendChild(tr);
     });
+}
+
+/**
+ * 각 탭별 강제 데이터 새로고침 함수
+ */
+function refreshHoldingsAnalysis() {
+    fetchHoldingsAnalysisData(true);
+}
+
+function refreshSP500() {
+    fetchSP500Data();
+}
+
+function refreshKOSPI200() {
+    fetchKOSPI200Data();
 }
 
 /**

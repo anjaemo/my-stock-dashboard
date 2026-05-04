@@ -315,9 +315,12 @@
         <!-- 2.5. My Holdings 분석 탭 -->
         <div id="holdings-analysis-tab" class="tab-content">
             <section class="mdd-container">
-                <div class="mdd-header">
-                    <h2 class="section-title">💼 내 보유 종목 상세 분석</h2>
-                    <p id="holdings-analysis-status" class="status-msg">포트폴리오 데이터를 로딩 중...</p>
+                <div class="mdd-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                    <div>
+                        <h2 class="section-title">💼 내 보유 종목 상세 분석</h2>
+                        <p id="holdings-analysis-status" class="status-msg">포트폴리오 데이터를 로딩 중...</p>
+                    </div>
+                    <button class="submit-btn" onclick="refreshHoldingsAnalysis()" style="margin: 0; width: auto; padding: 0.5rem 1rem;">새로 갱신 🔄</button>
                 </div>
                 
                 <div class="card glass">
@@ -351,9 +354,12 @@
         <!-- 3. S&P 500 탭 -->
         <div id="sp500-tab" class="tab-content">
             <section class="mdd-container">
-                <div class="mdd-header">
-                    <h2 class="section-title">🇺🇸 S&P 500 상위 100 분석</h2>
-                    <p id="sp500-status" class="status-msg">데이터 로딩 대기 중...</p>
+                <div class="mdd-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                    <div>
+                        <h2 class="section-title">🇺🇸 S&P 500 상위 100 분석</h2>
+                        <p id="sp500-status" class="status-msg">데이터 로딩 대기 중...</p>
+                    </div>
+                    <button class="submit-btn" onclick="refreshSP500()" style="margin: 0; width: auto; padding: 0.5rem 1rem;">새로 갱신 🔄</button>
                 </div>
                 
                 <div class="card glass">
@@ -387,9 +393,12 @@
         <!-- 4. KOSPI 200 탭 -->
         <div id="kospi200-tab" class="tab-content">
             <section class="mdd-container">
-                <div class="mdd-header">
-                    <h2 class="section-title">🇰🇷 KOSPI 200 상위 100 분석</h2>
-                    <p id="kospi200-status" class="status-msg">데이터 로딩 대기 중...</p>
+                <div class="mdd-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                    <div>
+                        <h2 class="section-title">🇰🇷 KOSPI 200 상위 100 분석</h2>
+                        <p id="kospi200-status" class="status-msg">데이터 로딩 대기 중...</p>
+                    </div>
+                    <button class="submit-btn" onclick="refreshKOSPI200()" style="margin: 0; width: auto; padding: 0.5rem 1rem;">새로 갱신 🔄</button>
                 </div>
                 
                 <div class="card glass">

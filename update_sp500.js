@@ -48,7 +48,7 @@ function calculateMDDAndRecovery(closes) {
     const count = drawdowns.filter(d => d >= threshold).length;
     const prob = closes.length > 0 ? ((count / closes.length) * 100).toFixed(1) : 0;
 
-    return { mdd: (mdd * 100).toFixed(2), recoveryProb: prob };
+    return { mdd: (currentDrawdown * 100).toFixed(2), recoveryProb: prob };
 }
 
 async function getSP500Tickers() {
