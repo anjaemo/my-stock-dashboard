@@ -247,8 +247,8 @@ async function fetchHoldingsAnalysisData(force = false) {
                     divYield = kospiItem.dividendYield;
                 }
                 
-                // 1. 기본 정보 및 히스토리 (10년치 + 배당 정보)
-                const historyUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=10y&events=div`;
+                // 1. 기본 정보 및 히스토리 (10년치 + 배당 정보) - 캐시 방지 파라미터 추가
+                const historyUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=10y&events=div&_=${Date.now()}`;
                 const historyRes = await fetchWithFallback(historyUrl, true);
                 
                 if (historyRes && historyRes.type === 'json') {
@@ -436,27 +436,6 @@ function initDashboard() {
         }
     });
 
-    // 💰 통화 변경 시 종목 리스트 필터링
-    document.getElementById('currency-select')?.addEventListener('change', (e) => {
-        const selectedCurrency = e.target.value;
-        const stockSelect = document.getElementById('stock-name-select');
-        if (!stockSelect) return;
-
-        Array.from(stockSelect.options).forEach(option => {
-            if (option.value === "" || option.value === "DIRECT") {
-                option.style.display = "block";
-            } else {
-                option.style.display = option.dataset.currency === selectedCurrency ? "block" : "none";
-            }
-        });
-        
-        // 필터링 후 현재 선택된 종목이 숨겨진 경우 초기화
-        const selectedOption = stockSelect.options[stockSelect.selectedIndex];
-        if (selectedOption && selectedOption.style.display === "none") {
-            stockSelect.value = "";
-        }
-    });
-
     // 📈 종목 선택 시 통화 자동 변경
     document.getElementById('stock-name-select')?.addEventListener('change', (e) => {
         const selectedOption = e.target.options[e.target.selectedIndex];
@@ -468,32 +447,6 @@ function initDashboard() {
 
     // 폼 제출 이벤트
     document.getElementById('transaction-form')?.addEventListener('submit', handleTransactionSubmit);
-
-    // 1분마다 자동 새로고침 (활성 탭일 때만)
-    setInterval(() => {
-        if (document.visibilityState === 'visible') {
-            console.log("🔄 1분 주기 자동 새로고침 시작...");
-            fetchData(false); // 자동 새로고침 시에는 구글 시트 강제 갱신 안 함
-        }
-    }, 1 * 60 * 1000);
-
-    // 탭 가시성 변경 시 자동 새로고침 (1분 이상 경과 시)
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-            const CACHE_KEY = 'dashboard_data_cache';
-            const cachedData = localStorage.getItem(CACHE_KEY);
-            if (cachedData) {
-                const cache = JSON.parse(cachedData);
-                const lastUpdate = cache.timestamp || 0;
-                const now = new Date().getTime();
-                // 1분(60,000ms) 이상 경과했으면 자동 새로고침
-                if (now - lastUpdate > 1 * 60 * 1000) {
-                    console.log("🔄 탭 활성화: 데이터가 1분 이상 경과하여 새로고침을 시작합니다.");
-                    fetchData(false);
-                }
-            }
-        }
-    });
 
     const refreshBtn = document.getElementById('refresh-fab');
     if (refreshBtn) refreshBtn.addEventListener('click', async () => {
@@ -568,6 +521,14 @@ function initDashboard() {
         // 데이터 페치 (강제 갱신)
         await fetchData(true);
         
+        // 현재 활성화된 탭이 서브 데이터 탭이라면 해당 탭도 즉시 갱신
+        const activeTab = document.querySelector('.tab-content.active');
+        if (activeTab) {
+            if (activeTab.id === 'holdings-analysis-tab') fetchHoldingsAnalysisData(true);
+            else if (activeTab.id === 'sp500-tab') fetchSP500Data();
+            else if (activeTab.id === 'kospi200-tab') fetchKOSPI200Data();
+        }
+        
         refreshBtn.classList.remove('loading');
         
         // 5초 후 토스트 제거
@@ -602,6 +563,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 즉시 데이터 페치 시작 (내부적으로 캐시를 먼저 보여주고 실시간 데이터를 가져옴)
     fetchData();
+
+    // 스크롤 맨 위로 가기 버튼 로직
+    const scrollTopBtn = document.getElementById('scroll-to-top');
+    if (scrollTopBtn) {
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 300) {
+                scrollTopBtn.style.display = 'flex';
+            } else {
+                scrollTopBtn.style.display = 'none';
+            }
+        });
+        scrollTopBtn.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
 });
 
 /**
@@ -849,6 +825,9 @@ async function fetchSP500Data() {
         // 렌더링
         renderSP500Table();
         
+        // 백그라운드 실시간 가격 업데이트
+        updateLivePrices(sp500Data, false);
+        
         statusText.textContent = `✅ S&P 500 업데이트 완료 (${new Date().toLocaleTimeString()})`;
     } catch (err) {
         console.error("SP500 데이터 로드 실패:", err);
@@ -963,6 +942,9 @@ async function fetchKOSPI200Data() {
 
         // 렌더링
         renderKOSPI200Table();
+
+        // 백그라운드 실시간 가격 업데이트
+        updateLivePrices(kospi200Data, true);
 
         statusText.textContent = `✅ KOSPI 200 업데이트 완료 (${new Date().toLocaleTimeString()})`;
     } catch (err) {
@@ -1412,7 +1394,8 @@ async function updateMarketCharts() {
             const chgEl = document.getElementById(`card-${m.id}-change`);
             
             const encodedTicker = encodeURIComponent(m.ticker);
-            const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodedTicker}?interval=1d&range=1d`;
+            // 캐시 방지를 위해 타임스탬프 추가 및 range를 1d로 설정하여 최신 데이터 요청
+            const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodedTicker}?interval=1d&range=1d&_=${Date.now()}`;
             
             const result = await fetchWithFallback(targetUrl, true);
 
@@ -1420,10 +1403,19 @@ async function updateMarketCharts() {
                 const meta = result.data.chart?.result?.[0]?.meta;
                 if (meta) {
                     const lastPrice = meta.regularMarketPrice;
-                    const prevClose = meta.chartPreviousClose || meta.previousClose;
                     
-                    if (lastPrice && prevClose) {
-                        const changePercent = ((lastPrice / prevClose - 1) * 100).toFixed(2);
+                    // 우선적으로 API에서 제공하는 공식 변화율 사용 (더 정확함)
+                    let changePercent = null;
+                    if (meta.regularMarketChangePercent !== undefined && meta.regularMarketChangePercent !== null) {
+                        changePercent = meta.regularMarketChangePercent.toFixed(2);
+                    } else {
+                        const prevClose = meta.chartPreviousClose || meta.previousClose;
+                        if (lastPrice && prevClose) {
+                            changePercent = ((lastPrice / prevClose - 1) * 100).toFixed(2);
+                        }
+                    }
+                    
+                    if (lastPrice !== undefined && changePercent !== null) {
                         const isPositive = parseFloat(changePercent) >= 0;
 
                         if (valEl) {
@@ -1563,6 +1555,7 @@ function processHoldingsData(data) {
         stockSelect.innerHTML = '<option value="">보유 종목 선택</option><option value="DIRECT">직접 입력 (신규)</option>';
     }
 
+    const addedStocks = new Set();
     data.forEach((row, i) => {
         if (i === 0 || !row[0] || ["종목명", "환율"].includes(row[0])) return;
 
@@ -1572,8 +1565,9 @@ function processHoldingsData(data) {
         const isKRW = /^\d{6}$/.test(tickerValue.replace('KRX:', '')) || nameValue.toLowerCase().includes('plus50');
         const currency = isKRW ? 'KRW' : 'USD';
 
-        // 드롭다운에 추가
-        if (stockSelect && row[0]) {
+        // 드롭다운에 추가 (중복 제거)
+        if (stockSelect && row[0] && !addedStocks.has(row[0])) {
+            addedStocks.add(row[0]);
             const opt = document.createElement('option');
             opt.value = row[0]; // 종목명
             opt.dataset.ticker = tickerValue; // 티커
@@ -1975,7 +1969,7 @@ async function openStockModal(item) {
     document.getElementById('modal-mdd').textContent = analysisData && analysisData.mdd !== '-' ? analysisData.mdd + '%' : (item.mdd ? item.mdd + '%' : '-');
     document.getElementById('modal-rsi').textContent = analysisData && analysisData.rsi !== '-' ? analysisData.rsi : '-';
     
-    // 시총과 52주 최고가는 fetchModalChartData에서 meta 데이터를 받아와서 업데이트할 예정
+    // 시총과 52주 최고가 활용
     document.getElementById('modal-market-cap').textContent = analysisData && analysisData.marketCap ? (currencyIsKRW ? formatKoreanCap(analysisData.marketCap) : formatBillion(analysisData.marketCap)) : '-';
     document.getElementById('modal-52w-high').textContent = '-';
 
@@ -1987,398 +1981,142 @@ async function openStockModal(item) {
     document.getElementById('modal-cost-basis').textContent = maskValue(evalKRWNum > 0 ? fmtKRW(costBasisKRW) : '-');
 
     const totalGainElem = document.getElementById('modal-total-gain');
-    totalGainElem.textContent = profitKRW !== 0
-        ? maskValue((profitKRW >= 0 ? '+' : '') + Math.round(profitKRW).toLocaleString('ko-KR') + '원')
-        : maskValue(item.display.profitKRW || '-');
-    totalGainElem.className = getColorClass(item.display.profitKRW);
+    totalGainElem.textContent = profitKRW !== 0 ? maskValue(fmtKRWS(profitKRW)) : '-';
+    totalGainElem.className = profitKRW > 0 ? 'value-up' : (profitKRW < 0 ? 'value-down' : '');
 
     const returnElem = document.getElementById('modal-return');
-    returnElem.textContent = `${item.display.returnRate}%`;
+    returnElem.textContent = item.display.returnRate ? `${item.display.returnRate}%` : '-';
     returnElem.className = getColorClass(item.display.returnRate);
 
     // Show modal
     overlay.classList.add('active');
     document.body.style.overflow = 'hidden';
 
-    // 기본 그래프 그리기 (1달)
-    const chartFilterGroup = document.getElementById('modal-chart-filter-group');
-    if (chartFilterGroup) {
-        chartFilterGroup.querySelectorAll('.sort-btn').forEach(btn => {
-            if (btn.textContent.includes('1달')) btn.classList.add('active');
-            else btn.classList.remove('active');
-        });
-    }
-
-    // 1. Intraday 대신 한달(1mo) 그래프로 표시 (기본값)
-    fetchModalChartData(item, '1mo');
+    // Load and render chart
+    fetchModalChartData(item.ticker, '1mo');
 }
 
-
-
-function closeStockModal(event) {
-    // If called with a click event (overlay click), only close if clicking the overlay itself
-    if (event instanceof Event && event.target !== document.getElementById('stock-modal-overlay')) return;
+function closeStockModal(e) {
+    if (e && e.target !== e.currentTarget && e.target.className !== 'modal-close') return;
     const overlay = document.getElementById('stock-modal-overlay');
     if (overlay) overlay.classList.remove('active');
-    document.body.style.overflow = '';
+    document.body.style.overflow = 'auto';
+    if (intradayChart) { intradayChart.destroy(); intradayChart = null; }
 }
 
-// ESC key to close
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        const overlay = document.getElementById('stock-modal-overlay');
-        if (overlay && overlay.classList.contains('active')) {
-            overlay.classList.remove('active');
-            document.body.style.overflow = '';
+async function fetchModalChartData(ticker, range) {
+    const ctx = document.getElementById('modal-intraday-chart').getContext('2d');
+    if (intradayChart) intradayChart.destroy();
+
+    // Placeholder animation while loading
+    intradayChart = new Chart(ctx, { type: 'line', data: { labels: [], datasets: [] }, options: { plugins: { title: { display: true, text: 'Loading historical data...' } } } });
+
+    try {
+        const formattedTicker = formatTicker(ticker);
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${formattedTicker}?interval=${range === '5d' ? '30m' : '1d'}&range=${range}`;
+        const res = await fetchWithFallback(url, true);
+
+        if (res && res.type === 'json') {
+            const chartData = res.data.chart.result[0];
+            const meta = chartData.meta;
+            const timestamps = chartData.timestamp;
+            const prices = chartData.indicators.quote[0].close;
+
+            // Update meta info in modal if available
+            if (meta.marketCap) {
+                const isKRW = /^\d{6}/.test(ticker);
+                document.getElementById('modal-market-cap').textContent = isKRW ? formatKoreanCap(meta.marketCap) : formatBillion(meta.marketCap);
+            }
+            if (meta.fiftyTwoWeekHigh) {
+                const isKRW = /^\d{6}/.test(ticker);
+                document.getElementById('modal-52w-high').textContent = isKRW ? Math.round(meta.fiftyTwoWeekHigh).toLocaleString() + '원' : '$' + meta.fiftyTwoWeekHigh.toFixed(2);
+            }
+
+            const labels = timestamps.map(ts => {
+                const date = new Date(ts * 1000);
+                return range === '5d' ? `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:00` : `${date.getMonth() + 1}/${date.getDate()}`;
+            });
+
+            const isPositive = (prices[prices.length - 1] >= prices[0]);
+            const color = isPositive ? '#4ade80' : '#fb7185';
+            const gradient = ctx.createLinearGradient(0, 0, 0, 200);
+            gradient.addColorStop(0, isPositive ? 'rgba(74,222,128,0.2)' : 'rgba(251,113,133,0.2)');
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+
+            intradayChart.destroy();
+            intradayChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: prices,
+                        borderColor: color,
+                        borderWidth: 2,
+                        fill: true,
+                        backgroundColor: gradient,
+                        tension: 0.1,
+                        pointRadius: 0,
+                        pointHitRadius: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } },
+                        y: { position: 'right', grid: { color: 'rgba(255,255,255,0.05)' } }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { mode: 'index', intersect: false }
+                    }
+                }
+            });
+        }
+    } catch (e) {
+        console.warn("Chart data load failed", e);
+        if (intradayChart) {
+            intradayChart.destroy();
+            intradayChart = new Chart(ctx, { type: 'line', data: { labels: [], datasets: [] }, options: { plugins: { title: { display: true, text: 'Failed to load chart data' } } } });
         }
     }
-});
-
-function drawModalChart(item, labels, prices, range = '1mo') {
-    const canvas = document.getElementById('modal-intraday-chart');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-
-    if (intradayChart) { try { intradayChart.destroy(); } catch (e) { console.warn("Resource cleanup error:", e); } }
-
-    const isPositive = prices[prices.length - 1] >= prices[0];
-    const color = isPositive ? '#4ade80' : '#fb7185';
-
-    const gradient = ctx.createLinearGradient(0, 0, 0, 220);
-    gradient.addColorStop(0, isPositive ? 'rgba(74,222,128,0.2)' : 'rgba(251,113,133,0.2)');
-    gradient.addColorStop(1, 'rgba(0,0,0,0)');
-
-    intradayChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                data: prices,
-                borderColor: color,
-                borderWidth: 2,
-                pointRadius: 0,
-                pointHoverRadius: 4,
-                fill: true,
-                backgroundColor: gradient,
-                tension: 0.2
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            scales: {
-                x: {
-                    grid: { display: false },
-                    ticks: {
-                        maxTicksLimit: 6,
-                        color: 'rgba(255,255,255,0.4)',
-                        font: { size: 10 }
-                    }
-                },
-                y: {
-                    grid: { color: 'rgba(255,255,255,0.05)' },
-                    ticks: {
-                        color: 'rgba(255,255,255,0.4)',
-                        font: { size: 10 },
-                        callback: function(value) {
-                            return value.toLocaleString();
-                        }
-                    }
-                }
-            },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                    titleColor: '#f1f5f9',
-                    bodyColor: '#f1f5f9',
-                    padding: 10,
-                    cornerRadius: 8,
-                    displayColors: false,
-                    callbacks: {
-                        label: function(context) {
-                            let label = ' 가격: ';
-                            if (item.currency === 'KRW') label += '₩' + context.parsed.y.toLocaleString();
-                            else label += '$' + context.parsed.y.toFixed(2);
-                            return label;
-                        }
-                    }
-                }
-            }
-        }
-    });
 }
 
-/**
- * 모달 차트 기간 변경 처리
- */
 function updateModalChartRange(range, btn) {
     if (!currentModalItem) return;
-    
-    // 버튼 활성화 상태 변경
-    const group = document.getElementById('modal-chart-filter-group');
-    if (group) {
-        group.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
-    }
-    if (btn) btn.classList.add('active');
-    
-    fetchModalChartData(currentModalItem, range);
+    document.querySelectorAll('#modal-chart-filter-group .sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    fetchModalChartData(currentModalItem.ticker, range);
 }
 
-/**
- * 야후 파이낸스에서 히스토리컬 데이터를 가져와 차트 업데이트
- */
-async function fetchModalChartData(item, range = '1mo') {
-    try {
-        const ticker = formatTicker(item.ticker);
-        let interval = '1d';
-        if (range === '5d') interval = '15m';
+// -------------------------------------------------------------------------
+// 차트 렌더링 함수들
+// -------------------------------------------------------------------------
 
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=${interval}&range=${range}`;
-        const result = await fetchWithFallback(url, true);
-
-        if (!result || result.type !== 'json') return;
-
-        const chart = result.data.chart;
-        if (!chart || !chart.result || chart.result.length === 0) return;
-
-        const chartResult = chart.result[0];
-        const timestamps = chartResult.timestamp;
-        const closes = chartResult.indicators.quote[0].close;
-        const meta = chartResult.meta;
-
-        if (!timestamps || !closes) return;
-
-        const labels = timestamps.map(ts => {
-            const d = new Date(ts * 1000);
-            if (range === '5d') {
-                return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-            }
-            return (d.getMonth() + 1) + '/' + d.getDate();
-        });
-
-        // null 값 보정
-        const prices = [];
-        const rawCloses = closes;
-        for (let i = 0; i < rawCloses.length; i++) {
-            if (rawCloses[i] !== null) prices.push(rawCloses[i]);
-            else if (i > 0) prices.push(prices[i-1]);
-            else prices.push(meta.regularMarketPrice);
-        }
-
-        // 차트 그리기
-        drawModalChart(item, labels, prices, range);
-
-        // 2. 주식/ETF 정보 업데이트 (실시간 데이터 활용)
-        const currencyIsKRW = item.currency === 'KRW';
-        const mktCap = meta.marketCap;
-        const high52w = meta.fiftyTwoWeekHigh;
-        
-        if (mktCap) {
-            document.getElementById('modal-market-cap').textContent = currencyIsKRW ? formatKoreanCap(mktCap) : formatBillion(mktCap);
-        }
-        if (high52w) {
-            document.getElementById('modal-52w-high').textContent = currencyIsKRW ? '₩' + high52w.toLocaleString() : '$' + high52w.toFixed(2);
-        }
-
-    } catch (e) {
-        console.warn('Modal chart data fetch failed:', e);
-    }
-}
-
-function formatVolume(vol) {
-    if (vol >= 1e9) return (vol / 1e9).toFixed(1) + 'B';
-    if (vol >= 1e6) return (vol / 1e6).toFixed(1) + 'M';
-    if (vol >= 1e3) return (vol / 1e3).toFixed(1) + 'K';
-    return vol.toLocaleString();
-}
-
-
-
-function renderSummaryChart(labels, investData, evalData) {
-    const canvas = document.getElementById('summaryChart'); if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-
+function renderSummaryChart(labels, invests, evals) {
+    const ctx = document.getElementById('summaryChart').getContext('2d');
     if (summaryChart) summaryChart.destroy();
 
     summaryChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels,
+            labels: labels,
             datasets: [
-                {
-                    label: '투자원금',
-                    data: investData,
-                    backgroundColor: 'rgba(129, 140, 248, 0.6)',
-                    borderColor: '#818cf8',
-                    borderWidth: 1,
-                    borderRadius: 6
-                },
-                {
-                    label: '평가금액',
-                    data: evalData,
-                    backgroundColor: 'rgba(56, 189, 248, 0.6)',
-                    borderColor: '#38bdf8',
-                    borderWidth: 1,
-                    borderRadius: 6
-                }
+                { label: '평가액', data: evals, backgroundColor: '#38bdf8', borderRadius: 6 },
+                { label: '투자액', data: invests, backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: 6 }
             ]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             scales: {
-                y: {
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    display: !isPrivacyMode,
-                    ticks: {
-                        display: !isPrivacyMode,
-                        font: { size: window.innerWidth < 768 ? 10 : 12 }
-                    }
-                },
-                x: {
-                    grid: { display: false },
-                    ticks: { font: { size: window.innerWidth < 768 ? 10 : 12 } }
-                }
+                x: { grid: { display: false } },
+                y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.05)' } }
             },
             plugins: {
-                legend: {
-                    display: window.innerWidth > 480, // 아주 작은 화면에서는 범례 숨김
-                    position: 'top',
-                    align: 'end',
-                    labels: { boxWidth: 10, padding: 10, font: { size: 11 } }
-                },
+                legend: { position: 'bottom' },
                 tooltip: {
-                    enabled: !isPrivacyMode
-                }
-            }
-        }
-    });
-}
-
-function renderHistoryChart(data) {
-    const canvas = document.getElementById('historyChart'); if (!canvas || !data) return;
-    const ctx = canvas.getContext('2d');
-    
-    // 기존 차트 객체가 있으면 완전히 파괴 (중복 렌더링 방지)
-    if (historyChart) {
-        historyChart.destroy();
-        historyChart = null;
-    }
-
-    const dates = [], evals = [], invests = [], incomes = [], dividends = [];
-
-    data.slice(1).forEach(row => {
-        if (!row[0]) return;
-        dates.push(row[0]);
-        evals.push(parseSafeFloat(row[1]) / 10000000);
-        invests.push(parseSafeFloat(row[2]) / 10000000);
-        incomes.push(parseSafeFloat(row[3]) / 10000000);
-        dividends.push(parseSafeFloat(row[11]) / 10000000);
-    });
-
-    historyChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: dates,
-            datasets: [
-                {
-                    label: '평가금 (천만)',
-                    data: evals,
-                    borderColor: '#38bdf8',
-                    backgroundColor: 'transparent',
-                    fill: false,
-                    tension: 0.4,
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    borderWidth: 3
-                },
-                {
-                    label: '투자금 (천만)',
-                    data: invests,
-                    borderColor: '#818cf8',
-                    backgroundColor: 'transparent',
-                    fill: false,
-                    tension: 0.4,
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    borderWidth: 2,
-                    borderDash: [5, 5]
-                },
-                {
-                    label: '수입금 (천만)',
-                    data: incomes,
-                    borderColor: '#4ade80',
-                    backgroundColor: 'transparent',
-                    fill: false,
-                    tension: 0.4,
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    borderWidth: 2
-                },
-                {
-                    label: '배당금 (천만)',
-                    data: dividends,
-                    borderColor: '#facc15',
-                    backgroundColor: 'transparent',
-                    fill: false,
-                    tension: 0.4,
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    borderWidth: 2
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: {
-                duration: 500 // 데이터 전환 시 부드러운 애니메이션 추가
-            },
-            interaction: { mode: 'index', intersect: false },
-            scales: {
-                y: {
-                    title: { display: false },
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    display: !isPrivacyMode,
-                    ticks: {
-                        display: !isPrivacyMode,
-                        font: { size: window.innerWidth < 768 ? 10 : 12 },
-                        callback: (value) => value.toLocaleString()
-                    }
-                },
-                x: {
-                    grid: { display: false },
-                    ticks: {
-                        maxRotation: 0,
-                        autoSkip: true,
-                        maxTicksLimit: window.innerWidth < 768 ? 5 : 8,
-                        font: { size: window.innerWidth < 768 ? 10 : 12 }
-                    }
-                }
-            },
-            plugins: {
-                legend: {
-                    display: window.innerWidth > 480,
-                    position: 'top',
-                    align: 'end',
-                    labels: { usePointStyle: true, boxWidth: 6, padding: 10, font: { size: 10 } }
-                },
-                tooltip: {
-                    enabled: !isPrivacyMode, // Privacy 모드 시 툴팁 비활성화
                     callbacks: {
-                        label: function (context) {
-                            let label = context.dataset.label.split(' ')[0] || '';
-                            if (label) label += ': ';
-                            if (context.parsed.y !== null) {
-                                label += context.parsed.y.toFixed(1) + '천만원';
-                                if (context.parsed.y >= 10) {
-                                    label += ` (${(context.parsed.y / 10).toFixed(2)}억원)`;
-                                }
-                            }
-                            return label;
-                        }
+                        label: (ctx) => `${ctx.dataset.label}: ${maskValue(ctx.raw.toLocaleString())}원`
                     }
                 }
             }
@@ -2388,177 +2126,141 @@ function renderHistoryChart(data) {
 
 function updateHistoryRange(range, btn) {
     currentHistoryRange = range;
-    
-    // 버튼 UI 업데이트
     const buttons = document.querySelectorAll('#history-filter-group .sort-btn');
     buttons.forEach(b => b.classList.remove('active'));
-    if (btn) btn.classList.add('active');
-
+    btn.classList.add('active');
     renderHistoryChartWithRange();
 }
 
 function renderHistoryChartWithRange() {
-    if (!rawHistoryData || rawHistoryData.length <= 1) return;
+    if (!rawHistoryData || rawHistoryData.length === 0) return;
 
-    const headers = rawHistoryData[0];
-    const dataRows = rawHistoryData.slice(1).filter(row => row && row[0] && row[0].trim() !== "");
+    const ctx = document.getElementById('historyChart').getContext('2d');
+    if (historyChart) historyChart.destroy();
+
+    // 1. 헤더에서 날짜 인덱스 찾기 (첫 번째 열이 보통 날짜)
+    const data = rawHistoryData.slice(1); // 헤더 제외
     
-    if (currentHistoryRange === 'ALL' || dataRows.length === 0) {
-        renderHistoryChart(rawHistoryData);
-        return;
-    }
-
-    // 헬퍼: 다양한 날짜 형식을 안전하게 Date 객체로 변환
-    const parseDate = (str) => {
-        if (!str) return new Date(NaN);
-        const cleanStr = str.trim().replace(/\.$/, '');
-        
-        // 1. 점(.)으로 분리 (YY.MM.DD 또는 YYYY.MM.DD)
-        const dots = cleanStr.split('.');
-        if (dots.length === 3) {
-            let y = parseInt(dots[0]);
-            let m = parseInt(dots[1]) - 1;
-            let d = parseInt(dots[2]);
-            if (y < 100) y += 2000;
-            return new Date(y, m, d);
+    // 2. 필터링 로직
+    let filteredData = data;
+    const now = new Date();
+    
+    if (currentHistoryRange !== 'ALL') {
+        const cutoff = new Date();
+        if (currentHistoryRange === '1M') cutoff.setMonth(now.getMonth() - 1);
+        else if (currentHistoryRange === '3M') cutoff.setMonth(now.getMonth() - 3);
+        else if (currentHistoryRange === '1Y') cutoff.setFullYear(now.getFullYear() - 1);
+        else if (currentHistoryRange === '3Y') cutoff.setFullYear(now.getFullYear() - 3);
+        else if (currentHistoryRange === '5Y') cutoff.setFullYear(now.getFullYear() - 5);
+        else if (currentHistoryRange === 'YTD') {
+            cutoff.setMonth(0); cutoff.setDate(1); cutoff.setHours(0,0,0,0);
         }
         
-        // 2. 대시(-)로 분리 (YYYY-MM-DD)
-        const dashes = cleanStr.split('-');
-        if (dashes.length === 3) {
-            return new Date(cleanStr);
+        filteredData = data.filter(row => new Date(row[0]) >= cutoff);
+    }
+
+    const labels = filteredData.map(row => row[0]);
+    const evals = filteredData.map(row => parseSafeFloat(row[1]));
+    const invests = filteredData.map(row => parseSafeFloat(row[2]));
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, 'rgba(56, 189, 248, 0.2)');
+    gradient.addColorStop(1, 'rgba(56, 189, 248, 0)');
+
+    historyChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: '총 평가액',
+                    data: evals,
+                    borderColor: '#38bdf8',
+                    backgroundColor: gradient,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    borderWidth: 3
+                },
+                {
+                    label: '총 투자액',
+                    data: invests,
+                    borderColor: 'rgba(255, 255, 255, 0.3)',
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0,
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } },
+                y: { grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => `${ctx.dataset.label}: ${maskValue(ctx.raw.toLocaleString())}원`
+                    }
+                }
+            }
         }
-
-        // 3. 기타 표준 형식
-        const fallback = new Date(cleanStr);
-        return isNaN(fallback.getTime()) ? new Date(NaN) : fallback;
-    };
-
-    // 모든 데이터를 Date 객체와 함께 매핑
-    const rowsWithDate = dataRows.map(row => ({
-        date: parseDate(row[0]),
-        row: row
-    })).filter(item => !isNaN(item.date.getTime()));
-
-    if (rowsWithDate.length === 0) {
-        renderHistoryChart(rawHistoryData);
-        return;
-    }
-
-    // 데이터 중 가장 최신 날짜 찾기
-    const latestDate = new Date(Math.max(...rowsWithDate.map(item => item.date.getTime())));
-
-    // 시작 날짜 계산
-    let startDate = new Date(latestDate);
-    const value = parseInt(currentHistoryRange);
-    const unit = currentHistoryRange.slice(-1);
-
-    if (currentHistoryRange === 'YTD') {
-        startDate = new Date(latestDate.getFullYear(), 0, 1);
-    } else if (unit === 'M') {
-        startDate.setMonth(latestDate.getMonth() - value);
-    } else if (unit === 'Y') {
-        startDate.setFullYear(latestDate.getFullYear() - value);
-    }
-
-    // 필터링 실행
-    const filteredRows = rowsWithDate
-        .filter(item => item.date >= startDate)
-        .map(item => item.row);
-
-    // 필터링된 데이터로 그래프 렌더링 (헤더 포함)
-    if (filteredRows.length > 0) {
-        renderHistoryChart([headers, ...filteredRows]);
-    } else {
-        renderHistoryChart(rawHistoryData);
-    }
+    });
 }
 
 function filterBubbleChart(currency, btn) {
-    // 버튼 활성화 상태 변경
     const buttons = document.querySelectorAll('#bubble-filter-group .sort-btn');
     buttons.forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 
-    // 데이터 필터링
     let filtered = globalHoldings;
     if (currency !== 'ALL') {
         filtered = globalHoldings.filter(h => h.currency === currency);
     }
-
-    // 차트 다시 그리기
     renderBubbleChart(filtered);
 }
 
-function renderBubbleChart(holdings) {
-    const canvas = document.getElementById('bubbleChart'); if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-
-    // 수익액 절대값 중 최대값 찾기 (색상 농도 계산용)
-    const maxAbsProfit = Math.max(...holdings.map(h => Math.abs(h.profit || 0)), 1);
-
-    const bubbleData = holdings.map((item, idx) => {
-        const profit = item.profit || 0;
-        const absProfit = Math.abs(profit);
-
-        // 농도 계산 (최소 0.3에서 최대 0.9까지)
-        const intensity = 0.3 + (absProfit / maxAbsProfit) * 0.6;
-
-        let backgroundColor, borderColor;
-        
-        if (profit >= 0) {
-            // 수익: 빨강~주황 계열 (0 ~ 30도 사이에서 종목별로 Hue 분산)
-            const hue = (idx * 137.5) % 30; // 황금각을 활용한 고른 분산
-            backgroundColor = `hsla(${hue}, 80%, 60%, ${intensity})`;
-            borderColor = `hsla(${hue}, 80%, 45%, 0.8)`;
-        } else {
-            // 손실: 파랑~보라 계열 (200 ~ 250도 사이에서 종목별로 Hue 분산)
-            const hue = 200 + ((idx * 137.5) % 50);
-            backgroundColor = `hsla(${hue}, 80%, 60%, ${intensity})`;
-            borderColor = `hsla(${hue}, 80%, 45%, 0.8)`;
-        }
-
-        return {
-            label: item.name,
-            data: [{
-                x: item.dailyChange,
-                y: item.returnRate,
-                r: Math.min(45, Math.sqrt(item.eval / 400000) * 2.5), // 크기 약간 확대
-                eval: item.eval,
-                profit: profit,
-                name: item.name
-            }],
-            backgroundColor: backgroundColor,
-            borderColor: borderColor,
-            borderWidth: 1.5 // 테두리 두께 강화
-        };
-    });
-
+function renderBubbleChart(data) {
+    const ctx = document.getElementById('bubbleChart').getContext('2d');
     if (bubbleChart) bubbleChart.destroy();
+
+    const bubbleData = data.map(h => ({
+        x: h.dailyChange,
+        y: h.returnRate,
+        r: Math.sqrt(h.weight) * 5 + 5,
+        name: h.name,
+        profit: h.profit,
+        ticker: h.ticker
+    }));
+
     bubbleChart = new Chart(ctx, {
         type: 'bubble',
-        data: { datasets: bubbleData },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            layout: { padding: 20 },
-            scales: {
-                x: {
-                    title: { display: window.innerWidth > 768, text: '일일 변동률 (%)', color: '#94a3b8' },
-                    grid: {
-                        color: (context) => context.tick.value === 0 ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.05)',
-                        lineWidth: (context) => context.tick.value === 0 ? 2 : 1
-                    },
-                    ticks: { font: { size: window.innerWidth < 768 ? 9 : 11 } }
+        data: {
+            datasets: [{
+                label: '보유 종목',
+                data: bubbleData,
+                backgroundColor: (context) => {
+                    const d = context.raw;
+                    if (!d) return 'rgba(255,255,255,0.5)';
+                    return d.x >= 0 ? 'rgba(74, 222, 128, 0.6)' : 'rgba(251, 113, 133, 0.6)';
                 },
-                y: {
-                    title: { display: window.innerWidth > 768, text: '전체 수익률 (%)', color: '#94a3b8' },
-                    grid: {
-                        color: (context) => context.tick.value === 0 ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.05)',
-                        lineWidth: (context) => context.tick.value === 0 ? 2 : 1
-                    },
-                    ticks: { font: { size: window.innerWidth < 768 ? 9 : 11 } }
-                }
+                borderColor: (context) => {
+                    const d = context.raw;
+                    if (!d) return 'white';
+                    return d.x >= 0 ? '#4ade80' : '#fb7185';
+                },
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: {
+                x: { title: { display: true, text: '일일 변동 (%)' }, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
+                y: { title: { display: true, text: '전체 수익률 (%)' }, grid: { color: 'rgba(255, 255, 255, 0.05)' } }
             },
             plugins: {
                 legend: { display: false },
@@ -2594,7 +2296,7 @@ function renderBubbleChart(holdings) {
                                 ctx.font = `bold ${fontSize}px Pretendard`;
                                 ctx.textAlign = 'center';
                                 ctx.textBaseline = 'middle';
-                                
+
                                 // 가독성을 위한 강한 그림자
                                 ctx.shadowBlur = 6;
                                 ctx.shadowColor = 'rgba(0,0,0,0.8)';
@@ -2625,7 +2327,15 @@ async function handleTransactionSubmit(e) {
         // 매수, 매도, 배당금 등
         if (stockSelect.value === 'DIRECT') {
             stockName = stockInput.value.trim();
+            if (!stockName) {
+                alert("신규 종목명을 입력해주세요.");
+                return;
+            }
             let rawTicker = tickerInput.value.trim().toUpperCase();
+            if (!rawTicker) {
+                alert("티커를 입력해주세요.");
+                return;
+            }
 
             // 한국 주식 (6자리 숫자) 처리: 접두사가 없으면 KRX: 추가
             if (/^\d{6}$/.test(rawTicker)) {
@@ -2636,6 +2346,10 @@ async function handleTransactionSubmit(e) {
         } else {
             const selectedOpt = stockSelect.options[stockSelect.selectedIndex];
             stockName = selectedOpt.value;
+            if (!stockName) {
+                alert("종목을 선택해주세요.");
+                return;
+            }
             stockCode = selectedOpt.dataset.ticker || '';
         }
     }
@@ -2698,13 +2412,13 @@ async function requestMarketRefresh(account = null) {
     try {
         const payload = { command: "refresh_market" };
         if (account) payload.account = account;
-        
+
         console.log(`${account || '전체'} 시트 데이터 갱신 요청 중...`);
         // fetch promise를 반환하여 await 가능하게 함
-        return fetch(CONFIG.gasURL, { 
-            method: 'POST', 
-            mode: 'no-cors', 
-            body: JSON.stringify(payload) 
+        return fetch(CONFIG.gasURL, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify(payload)
         });
     } catch (e) {
         console.warn('Market refresh request failed:', e);
@@ -2712,56 +2426,119 @@ async function requestMarketRefresh(account = null) {
     }
 }
 
-// ===== Slider Controls =====
+// Slider Functionality
+let currentSlide = 0;
+
+function updateSliderDots() {
+    const dots = document.querySelectorAll('.slider-dot');
+    dots.forEach((dot, index) => {
+        dot.classList.toggle('active', index === currentSlide);
+    });
+}
+
 function moveSlider(direction) {
     const slider = document.getElementById('chart-slider');
     if (!slider) return;
-    const slideWidth = slider.offsetWidth;
-    slider.scrollBy({ left: direction * slideWidth, behavior: 'smooth' });
+    
+    const slideCount = slider.children.length;
+    currentSlide = (currentSlide + direction + slideCount) % slideCount;
+    
+    goSlide(currentSlide);
 }
 
 function goSlide(index) {
     const slider = document.getElementById('chart-slider');
     if (!slider) return;
+    
+    currentSlide = index;
     const slideWidth = slider.offsetWidth;
-    slider.scrollTo({ left: index * slideWidth, behavior: 'smooth' });
-}
-
-function updateSliderDots() {
-    const slider = document.getElementById('chart-slider');
-    if (!slider) return;
-
-    // 정확한 인덱스 계산
-    const index = Math.round(slider.scrollLeft / (slider.offsetWidth || 1));
-    const dots = document.querySelectorAll('.slider-dot');
-    dots.forEach((dot, i) => {
-        dot.classList.toggle('active', i === index);
+    slider.scrollTo({
+        left: slideWidth * index,
+        behavior: 'smooth'
     });
-
+    
     // 제목 업데이트
-    const titleElem = document.getElementById('slider-title');
-    if (titleElem) {
-        titleElem.textContent = index === 0 ? "📈 자산 추이 (History)" : "📊 리스크 분석 (Bubble Chart)";
+    const title = document.getElementById('slider-title');
+    if (title) {
+        title.innerHTML = index === 0 ? '📈 자산 추이 (History)' : '🔍 리스크 분석 (Risk Analysis)';
     }
-
-    // 차트 리사이즈 및 업데이트 강제 실행
-    if (index === 0 && historyChart) {
-        historyChart.resize();
-        historyChart.update('none');
-    } else if (index === 1 && bubbleChart) {
-        bubbleChart.resize();
-        bubbleChart.update('none');
-    }
+    
+    updateSliderDots();
 }
 
-// 스크롤 이벤트 감지하여 점 업데이트
+// 슬라이더 스크롤 이벤트 감지 (모바일 스와이프 대응)
 document.addEventListener('DOMContentLoaded', () => {
     const slider = document.getElementById('chart-slider');
     if (slider) {
         slider.addEventListener('scroll', () => {
-            // 디바운싱: 성능을 위해 짧은 지연 후 실행
-            clearTimeout(slider.scrollTimeout);
-            slider.scrollTimeout = setTimeout(updateSliderDots, 100);
+            const slideWidth = slider.offsetWidth;
+            const newIndex = Math.round(slider.scrollLeft / slideWidth);
+            if (newIndex !== currentSlide) {
+                currentSlide = newIndex;
+                const title = document.getElementById('slider-title');
+                if (title) {
+                    title.innerHTML = currentSlide === 0 ? '📈 자산 추이 (History)' : '🔍 리스크 분석 (Risk Analysis)';
+                }
+                updateSliderDots();
+            }
         });
     }
 });
+
+/**
+ * 🚀 S&P 500 / KOSPI 200 종목들의 실시간 가격을 가져와 화면을 조용히 업데이트함
+ */
+async function updateLivePrices(dataArray, isKorean = false) {
+    if (!dataArray || dataArray.length === 0) return;
+    
+    // 100개 종목을 10개씩 나누어 처리 (API 제한 및 성능 고려)
+    const batchSize = 10;
+    for (let i = 0; i < dataArray.length; i += batchSize) {
+        const batch = dataArray.slice(i, i + batchSize);
+        
+        await Promise.all(batch.map(async (item) => {
+            try {
+                const ticker = formatTicker(item.ticker);
+                const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_=${Date.now()}`;
+                const res = await fetchWithFallback(url, true);
+                
+                if (res && res.type === 'json') {
+                    const meta = res.data.chart.result[0].meta;
+                    const livePrice = meta.regularMarketPrice;
+                    const liveChange = meta.regularMarketChangePercent || 
+                                     (meta.chartPreviousClose ? ((livePrice / meta.chartPreviousClose - 1) * 100) : 0);
+                    
+                    // 데이터 객체 업데이트
+                    item.price = livePrice;
+                    item.change = liveChange.toFixed(2);
+                    
+                    // DOM 즉시 업데이트 (해당 티커를 포함하는 행 찾기)
+                    const tableId = isKorean ? '#kospi200-table' : '#sp500-table';
+                    const rows = document.querySelectorAll(`${tableId} tbody tr`);
+                    
+                    rows.forEach(row => {
+                        if (row.innerHTML.includes(`(${item.ticker})`)) {
+                            const priceCell = row.querySelector('[data-label="현재가"]');
+                            const changeCell = row.querySelector('[data-label="변동률"]');
+                            
+                            if (priceCell) {
+                                const prefix = isKorean ? '₩' : '$';
+                                priceCell.textContent = prefix + (isKorean ? livePrice.toLocaleString() : livePrice.toFixed(2));
+                            }
+                            
+                            if (changeCell) {
+                                changeCell.textContent = (liveChange >= 0 ? '+' : '') + item.change + '%';
+                                changeCell.className = getColorClass(item.change);
+                            }
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn(`Live update failed for ${item.ticker}`, e);
+            }
+        }));
+        
+        // 배치 간 미세한 지연
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+}

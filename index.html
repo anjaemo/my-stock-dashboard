@@ -10,27 +10,25 @@
 </head>
 <body>
     <div class="container">
-        <header>
-            <div>
-                <h1>🐶 바둑이 주식 대시보드</h1>
-                <p class="subtitle">데이터로 보는 스마트한 투자 생활</p>
-            </div>
+        <div class="header-top">
+            <h1>🐶 바둑이 주식 대시보드</h1>
             <div class="header-right">
-                <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
-                    <div id="view-mode-indicator" class="view-mode-container" onclick="cycleViewMode()" title="클릭하여 PC/모바일 모드 전환">
-                        <span id="view-mode-icon"></span>
-                        <span id="view-mode-text" class="view-mode-label">감지 중...</span>
-                    </div>
-                    <div class="privacy-toggle-container">
-                        <span class="privacy-label">🕶️ Privacy Mode</span>
-                        <label class="switch">
-                            <input type="checkbox" id="privacy-toggle">
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
+                <div id="view-mode-indicator" class="view-mode-container" onclick="cycleViewMode()" title="클릭하여 PC/모바일 모드 전환">
+                    <span id="view-mode-icon"></span>
+                    <span id="view-mode-text" class="view-mode-label">감지 중...</span>
+                </div>
+                <div class="privacy-toggle-container">
+                    <span class="privacy-label">🕶️ Privacy Mode</span>
+                    <label class="switch">
+                        <input type="checkbox" id="privacy-toggle">
+                        <span class="slider round"></span>
+                    </label>
                 </div>
                 <div id="last-updated" class="timestamp">업데이트 확인 중...</div>
             </div>
+        </div>
+        <header>
+            <p class="subtitle">데이터로 보는 스마트한 투자 생활</p>
         </header>
 
         <nav class="tabs">
@@ -43,7 +41,8 @@
 
         <!-- 1. 포트폴리오 탭 -->
         <div id="portfolio-tab" class="tab-content active">
-            <section class="summary-cards">
+            <section class="summary-cards" style="position: relative;">
+                <button id="refresh-fab" class="submit-btn refresh-btn-top">새로 갱신 🔄</button>
                 <div class="summary-card">
                     <span class="label">💰 현재 평가액</span>
                     <div id="card-eval-val" class="value skeleton">-</div>
@@ -515,8 +514,8 @@
         </div>
     </div>
 
-    <!-- 플로팅 갱신 버튼 -->
-    <button id="refresh-fab" class="refresh-fab" title="데이터 새로고침">갱신</button>
+    <!-- 맨 위로 가기 버튼 -->
+    <button id="scroll-to-top" class="scroll-to-top" title="맨 위로 가기" style="display: none;">⬆️</button>
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
