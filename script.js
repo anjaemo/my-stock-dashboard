@@ -682,38 +682,36 @@ function showToast(message, type = 'info', duration = 5000) {
     }, duration);
 }
 
-async function fetchData(shouldRefreshMarket = true) {
+async function fetchData(force = false) {
     holdingsAnalysisData = []; // 보유 종목 분석 데이터 초기화
     const CACHE_KEY = 'dashboard_data_cache';
 
-    // 1. 캐시된 데이터가 있으면 즉시 렌더링 (빈 화면 방지용)
-    const cachedData = localStorage.getItem(CACHE_KEY);
-    if (cachedData) {
-        try {
-            const cache = JSON.parse(cachedData);
-            renderFromData(cache);
-            
-            // 캐시가 1분 이내라면 최신으로 간주하고 업데이트 문구 조정
-            const now = new Date().getTime();
-            const cacheAge = (now - (cache.timestamp || 0)) / 1000;
-            if (cacheAge < 60) {
-                updateTimestamp(true, "Cache");
-            } else {
-                updateTimestamp(false, "Cache (Old)");
-            }
-        } catch (e) { console.warn("Cache fail", e); }
-    } else {
-        updateTimestamp(null, "⏳ 데이터 로드 중...");
+    // 1. 캐시된 데이터 처리: 강제 갱신이 아니면 캐시 시도
+    if (!force) {
+        const cachedData = localStorage.getItem(CACHE_KEY);
+        if (cachedData) {
+            try {
+                const cache = JSON.parse(cachedData);
+                renderFromData(cache);
+                
+                const now = new Date().getTime();
+                const cacheAge = (now - (cache.timestamp || 0)) / 1000;
+                // 캐시가 30초 이내면 사용
+                if (cacheAge < 30) {
+                    updateTimestamp(true, "Cache");
+                    return; 
+                }
+            } catch (e) { console.warn("Cache fail", e); }
+        }
     }
+    
+    updateTimestamp(null, "⏳ 데이터 로드 중...");
 
     try {
-        // 2. 실시간 데이터 및 마켓 차트 병렬 로드
+        // 2. 실시간 데이터 로드
         console.log("실시간 데이터 페칭 시작...");
         
-        // 마켓 차트 업데이트를 즉시 시작 (await 하지 않음)
-        const marketPromise = updateMarketCharts();
-
-        // 구글 시트 캐시 방지를 위해 타임스탬프 추가
+        // 구글 시트 캐시 방지를 위해 고유 타임스탬프 추가
         const ts = new Date().getTime();
         const addTs = (url) => url ? (url + (url.includes('?') ? '&' : '?') + 't=' + ts) : url;
 
@@ -738,44 +736,9 @@ async function fetchData(shouldRefreshMarket = true) {
         } else {
             throw new Error("Empty response from all proxies");
         }
-        
-        // 시트 데이터 로드 후 마켓 차트 로드 완료 대기
-        await marketPromise;
-
     } catch (err) {
-        console.warn("실시간 로드 실패, 스냅샷 시도:", err);
-
-        try {
-            const snapshotRes = await fetch(CONFIG.snapshotURL + "?v=" + new Date().getTime());
-            if (snapshotRes.ok) {
-                const snapshot = await snapshotRes.json();
-                renderFromData(snapshot);
-                updateTimestamp(false, "Snapshot");
-                
-                // 최신값이 아님을 사용자에게 알림
-                let timeInfo = "";
-                if (snapshot.updatedAt) {
-                    const updateDate = new Date(snapshot.updatedAt);
-                    timeInfo = ` (${updateDate.getHours()}시 ${updateDate.getMinutes()}분 기준)`;
-                }
-                showToast(`실시간 연결 지연으로 인해 백업 데이터를 표시합니다.${timeInfo}`, 'warning');
-            } else {
-                updateTimestamp(null, "❌ 데이터 로드 실패");
-                showToast("데이터를 불러오는데 실패했습니다. 네트워크를 확인해주세요.", 'error');
-            }
-        } catch (snapshotErr) {
-            console.error("최종 로드 실패", snapshotErr);
-            updateTimestamp(null, "❌ 서버 연결 불가");
-            showToast("서버에 연결할 수 없습니다.", 'error');
-        }
-    } finally {
-        const refreshBtn = document.getElementById('refresh-fab');
-        if (refreshBtn) refreshBtn.classList.remove('loading');
-    }
-
-    if (shouldRefreshMarket) {
-        fetchSP500Data();
-        fetchKOSPI200Data();
+        console.warn("실시간 로드 실패", err);
+        showToast("데이터 갱신 실패. 시트의 '웹에 게시' 상태를 확인하세요.", 'error');
     }
 }
 
@@ -1073,10 +1036,7 @@ async function fetchWithFallback(targetUrl, isYahoo = false) {
 
     const tasks = [];
 
-    // 1. 직접 시도 (CORS 허용된 경우 가장 빠름)
-    tasks.push(fetchTask(targetUrl).catch(() => new Promise(() => {})));
-
-    // 2. GAS 프록시 시도
+    // 1. GAS 프록시 우선 시도 (CORS 및 레이트 리밋 우회)
     if (CONFIG.gasURL) {
         tasks.push(fetchTask(CONFIG.gasURL, {
             method: 'POST',
@@ -1084,7 +1044,7 @@ async function fetchWithFallback(targetUrl, isYahoo = false) {
         }).catch(() => new Promise(() => {})));
     }
 
-    // 3. 공용 프록시 시도
+    // 2. 공용 프록시 시도
     const publicProxies = [
         `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
         `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
@@ -1092,6 +1052,9 @@ async function fetchWithFallback(targetUrl, isYahoo = false) {
     publicProxies.forEach(proxy => {
         tasks.push(fetchTask(proxy).catch(() => new Promise(() => {})));
     });
+
+    // 3. 직접 호출 시도 (마지막 수단)
+    tasks.push(fetchTask(targetUrl).catch(() => new Promise(() => {})));
 
     try {
         // 가장 빨리 성공하는 작업 결과 반환
@@ -1504,11 +1467,13 @@ function renderSummary(data, tableElement) {
 
             const dailyElem = document.getElementById('card-daily-val');
             if (dailyElem) {
-                dailyElem.innerHTML = getResponsiveValueHTML(maskValue(totalRow[6])) || "0";
-                dailyElem.className = 'value ' + getColorClass(totalRow[6]);
+                const changePct = totalRow[5] || "0%";
+                const changeAmt = getResponsiveValueHTML(maskValue(totalRow[6])) || "0";
+                dailyElem.innerHTML = `${changePct} <span style="font-size:0.6em; opacity:0.8;">(${changeAmt})</span>`;
+                dailyElem.className = 'value ' + getColorClass(totalRow[5]);
             }
 
-            document.getElementById('card-dividend-val').innerHTML = getResponsiveValueHTML(maskValue(totalRow[11])) || "0";
+            document.getElementById('card-dividend-val').innerHTML = getResponsiveValueHTML(maskValue(totalRow[12])) || "0";
         }
     } catch (e) { console.warn("Summary parsing error", e); }
 
@@ -1533,8 +1498,8 @@ function renderSummary(data, tableElement) {
             <td data-label="평가금">${maskValue(row[1])}</td>
             <td data-label="투자금">${maskValue(row[2])}</td>
             <td data-label="수입액" class="${getColorClass(row[3])}">${maskValue(row[3])}</td>
-            <td data-label="수익률">${investNum ? (evalNum / investNum * 100 - 100).toFixed(2) + '%' : '0%'}</td>
-            <td data-label="일일변동" class="${getColorClass(row[6])}">${maskValue(row[6])}</td>
+            <td data-label="수익률" class="${getColorClass(row[4])}">${maskValue(row[4])}</td>
+            <td data-label="일일변동" class="${getColorClass(row[5])}">${maskValue(row[5])} <span style="font-size:0.85em; opacity:0.8;">(${maskValue(row[6])})</span></td>
         `;
         tableElement.appendChild(tr);
     });

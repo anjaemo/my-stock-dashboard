@@ -12,8 +12,8 @@
         }
         
         // 💡 1. [프록시/명령 처리] 계좌 기록보다 먼저 확인
-        // script.js의 fetchWithFallback은 { command: "proxy_yahoo", url: "..." } 형식을 사용함
         if (data.command === "proxy_yahoo" && data.url) {
+        Utilities.sleep(1000); // 1초 대기하여 호출 속도 제한 완화
         return ContentService.createTextOutput(UrlFetchApp.fetch(data.url).getContentText());
         }
         
