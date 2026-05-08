@@ -2135,6 +2135,8 @@ function renderHistoryChartWithRange() {
     const labels = filteredData.map(row => row[0]);
     const evals = filteredData.map(row => parseSafeFloat(row[1]));
     const invests = filteredData.map(row => parseSafeFloat(row[2]));
+    const profits = filteredData.map(row => parseSafeFloat(row[3])); // 3번째 열: 총 수입액
+    const dividends = filteredData.map(row => parseSafeFloat(row[11])); // 11번째 열: 배당금
 
     const gradient = ctx.createLinearGradient(0, 0, 0, 400);
     gradient.addColorStop(0, 'rgba(56, 189, 248, 0.2)');
@@ -2162,7 +2164,25 @@ function renderHistoryChartWithRange() {
                     borderDash: [5, 5],
                     fill: false,
                     pointRadius: 0,
-                    borderWidth: 1
+                    borderWidth: 2
+                },
+                {
+                    label: '수익금',
+                    data: profits,
+                    borderColor: '#4ade80', // positive green
+                    fill: false,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    borderWidth: 2
+                },
+                {
+                    label: '배당액',
+                    data: dividends,
+                    borderColor: '#fbbf24', // yellow/gold for dividends
+                    fill: false,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    borderWidth: 2
                 }
             ]
         },
