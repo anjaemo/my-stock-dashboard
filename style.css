@@ -413,6 +413,8 @@ header h1 {
     padding: 1.5rem;
     border-radius: 24px;
     margin-bottom: 1.5rem;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .card h2 {
@@ -425,6 +427,11 @@ header h1 {
 }
 
 /* Chart Containers */
+.chart-container-sm, .chart-container-md {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+}
 .chart-container-sm { height: 300px; }
 .chart-container-md { height: 400px; }
 
@@ -1469,7 +1476,9 @@ body.force-pc .container {
 .slider-container {
     position: relative;
     width: 100%;
+    max-width: 100%;
     margin-top: 1rem;
+    overflow: hidden;
 }
 
 .slider-wrapper {
