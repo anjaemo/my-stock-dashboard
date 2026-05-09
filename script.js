@@ -2075,7 +2075,18 @@ function renderSummaryChart(labels, invests, evals) {
             responsive: true, maintainAspectRatio: false,
             scales: {
                 x: { grid: { display: false } },
-                y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+                y: { 
+                    beginAtZero: true, 
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: {
+                        callback: function(value) {
+                            if (window.innerWidth <= 768 && !document.body.classList.contains('force-pc')) {
+                                return (value / 100000000).toFixed(0) + '억';
+                            }
+                            return value.toLocaleString();
+                        }
+                    }
+                }
             },
             plugins: {
                 legend: { position: 'bottom' },
@@ -2191,7 +2202,17 @@ function renderHistoryChartWithRange() {
             interaction: { mode: 'index', intersect: false },
             scales: {
                 x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } },
-                y: { grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+                y: { 
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: {
+                        callback: function(value) {
+                            if (window.innerWidth <= 768 && !document.body.classList.contains('force-pc')) {
+                                return (value / 100000000).toFixed(0) + '억';
+                            }
+                            return value.toLocaleString();
+                        }
+                    }
+                }
             },
             plugins: {
                 legend: { display: false },
