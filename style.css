@@ -386,6 +386,10 @@ header h1 {
     align-items: start;
 }
 
+.content-area, .sidebar-area {
+    min-width: 0;
+}
+
 .sidebar-area {
     position: sticky;
     top: 80px;
