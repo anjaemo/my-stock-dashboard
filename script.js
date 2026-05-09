@@ -1494,12 +1494,12 @@ function renderSummary(data, tableElement) {
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td data-label="계좌명">${maskValue(name, true)}</td>
-            <td data-label="평가금">${maskValue(row[1])}</td>
-            <td data-label="투자금">${maskValue(row[2])}</td>
-            <td data-label="수입액" class="${getColorClass(row[3])}">${maskValue(row[3])}</td>
-            <td data-label="수익률" class="${getColorClass(row[4])}">${maskValue(row[4])}</td>
-            <td data-label="일일변동" class="${getColorClass(row[5])}">${maskValue(row[5])} <span style="font-size:0.85em; opacity:0.8;">(${maskValue(row[6])})</span></td>
+            <td data-label="계좌명"><span>${maskValue(name, true)}</span></td>
+            <td data-label="평가금"><span>${maskValue(row[1])}</span></td>
+            <td data-label="투자금"><span>${maskValue(row[2])}</span></td>
+            <td data-label="수입액" class="${getColorClass(row[3])}"><span>${maskValue(row[3])}</span></td>
+            <td data-label="수익률" class="${getColorClass(row[4])}"><span>${maskValue(row[4])}</span></td>
+            <td data-label="일일변동" class="${getColorClass(row[5])}"><span>${maskValue(row[5])} <span style="font-size:0.85em; opacity:0.8;">(${maskValue(row[6])})</span></span></td>
         `;
         tableElement.appendChild(tr);
     });
@@ -1608,16 +1608,16 @@ function renderHoldingsTable() {
 
         tr.innerHTML = `
             <td data-label="종목명">
-                <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
                     ${maskValue(item.name, true)}
                     <span class="card-currency-badge ${currencyClass}" style="font-size: 0.6rem; padding: 1px 4px;">${currencyLabel}</span>
                 </div>
             </td>
-            <td data-label="비중">${item.display.weight}%</td>
-            <td data-label="수익률" class="${getColorClass(item.display.returnRate)}">${item.display.returnRate}%</td>
-            <td data-label="수익액" class="${getColorClass(item.display.profitKRW)}">${formattedProfit}</td>
-            <td data-label="평가금">${formattedEval}</td>
-            <td data-label="일일변동" class="${getColorClass(item.display.dailyChange)}">${item.display.dailyChange}%</td>
+            <td data-label="비중"><span>${item.display.weight}%</span></td>
+            <td data-label="수익률" class="${getColorClass(item.display.returnRate)}"><span>${item.display.returnRate}%</span></td>
+            <td data-label="수익액" class="${getColorClass(item.display.profitKRW)}"><span>${formattedProfit}</span></td>
+            <td data-label="평가금"><span>${formattedEval}</span></td>
+            <td data-label="일일변동" class="${getColorClass(item.display.dailyChange)}"><span>${item.display.dailyChange}%</span></td>
         `;
         tbody.appendChild(tr);
     });
