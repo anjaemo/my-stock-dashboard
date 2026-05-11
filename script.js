@@ -669,13 +669,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // 초기화 로직 실행
     initDashboard();
 
-    // 모바일 기기 감지 시 카드 뷰를 기본으로 설정 (사용자 요청에 따라 테이블 뷰로 변경)
-    if (window.innerWidth < 768) {
-        switchHoldingsView('table');
-    } else {
-        // PC에서도 기본은 테이블 뷰
-        switchHoldingsView('table');
-    }
+    // 보유 종목 뷰를 항상 카드 뷰로 설정
+    switchHoldingsView('cards');
 
     // 페이지 로드 시 구글 시트 데이터 갱신 요청 (Non-blocking)
     const refreshFab = document.getElementById('refresh-fab');
