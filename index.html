@@ -180,18 +180,18 @@
                                     <button class="sort-btn"        id="sort-btn-change"   onclick="setHoldingsSort('dailyChange')">변화율</button>
                                 </div>
                                 <div class="holdings-view-toggle">
-                                    <button class="view-btn active" id="view-cards-btn" onclick="switchHoldingsView('cards')" title="카드 뷰">⊞</button>
-                                    <button class="view-btn" id="view-table-btn" onclick="switchHoldingsView('table')" title="테이블 뷰">☰</button>
+                                    <button class="view-btn" id="view-cards-btn" onclick="switchHoldingsView('cards')" title="카드 뷰">⊞</button>
+                                    <button class="view-btn active" id="view-table-btn" onclick="switchHoldingsView('table')" title="테이블 뷰">☰</button>
                                 </div>
                             </div>
                         </div>
 
 
                         <!-- 카드 뷰 -->
-                        <div id="holdings-cards-view" class="holdings-cards-grid"></div>
+                        <div id="holdings-cards-view" class="holdings-cards-grid" style="display:none"></div>
 
                         <!-- 테이블 뷰 -->
-                        <div id="holdings-table-view" class="table-wrapper" style="display:none">
+                        <div id="holdings-table-view" class="table-wrapper">
                             <table id="holdings-table">
                                 <thead>
                                     <tr>
