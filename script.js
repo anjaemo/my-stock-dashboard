@@ -1748,7 +1748,6 @@ function processHoldingsData(data) {
     });
 
     sortHoldings(sortState.column, false);
-    renderHoldingsCards();
     renderBubbleChart(globalHoldings);
 }
 
