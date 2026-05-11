@@ -2808,7 +2808,9 @@ function renderHeatmap() {
         const mEnd = (y === endYear) ? endMonth : 11;
 
         for (let m = mStart; m <= mEnd; m++) {
-            const monthLabel = `${y}년 ${m + 1}월`;
+            const shortYear = String(y).slice(-2);
+            const shortMonth = String(m + 1).padStart(2, '0');
+            const monthLabel = `${shortYear}.${shortMonth}`;
             html += `<tr><td class="hm-month-label">${monthLabel}</td>`;
 
             for (let d = 1; d <= 31; d++) {

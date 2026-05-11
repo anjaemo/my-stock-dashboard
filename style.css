@@ -1706,18 +1706,31 @@ body.force-pc .container {
     width: 75px;
 }
 
+/* Heatmap Row Hover Effect */
+.heatmap-table tr:hover .hm-cell {
+    outline: 1px solid #fff;
+    outline-offset: -1px;
+    z-index: 5;
+}
+
+.heatmap-table tr:hover td.hm-month-label {
+    color: #fff;
+    font-weight: 800;
+}
+
+/* 히트맵 셀의 기본 색상 유지 */
 .hm-cell {
     width: 11px;
-    height: 11px; /* 정사각형화 */
+    height: 11px;
     border-radius: 1px;
     background: rgba(255, 255, 255, 0.05);
-    transition: transform 0.2s;
+    transition: transform 0.2s, outline 0.1s;
     cursor: pointer;
     position: relative;
     text-align: center;
     vertical-align: middle;
-    font-size: 7px; /* 폰트 약간 축소 */
-    line-height: 11px; /* 높이와 일치 */
+    font-size: 7px;
+    line-height: 11px;
     padding: 0 !important;
     display: table-cell !important;
 }
