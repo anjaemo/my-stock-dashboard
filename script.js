@@ -1753,6 +1753,7 @@ function processHoldingsData(data) {
     });
 
     sortHoldings(sortState.column, false);
+    renderHoldingsCards();
     renderBubbleChart(globalHoldings);
 }
 
@@ -1805,9 +1806,6 @@ function renderHoldingsTable() {
         `;
         tbody.appendChild(tr);
     });
-
-    // Also render the card view
-    renderHoldingsCards();
 }
 
 // ===== Holdings Cards View =====
