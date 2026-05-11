@@ -1681,45 +1681,44 @@ body.force-pc .container {
 
 .heatmap-table {
     border-collapse: separate;
-    border-spacing: 2px;
+    border-spacing: 1px; /* 간격 축소 */
     font-size: 0.7rem;
-    table-layout: fixed; /* 셀 크기 고정 */
-    width: max-content; /* 테이블이 내용에 맞게 너비 조절 */
+    table-layout: fixed;
+    width: max-content;
 }
 
 .heatmap-table th {
-    padding: 2px;
+    padding: 1px;
     font-weight: 500;
     color: var(--text-muted);
     text-align: center;
-    width: 15px; /* 너비 명시적 고정 */
+    width: 13px; /* 너비 조절 */
 }
 
 .heatmap-table td.hm-month-label {
-    padding-right: 8px;
+    padding: 2px 8px 2px 0;
     text-align: right;
     color: var(--text-main);
     font-weight: 600;
     white-space: nowrap;
-    font-size: 0.75rem;
-    width: 80px; /* 라벨 영역 너비 확보 */
+    font-size: 0.7rem;
+    width: 75px;
 }
 
 .hm-cell {
     width: 11px;
-    height: 13px;
+    height: 11px; /* 정사각형화 */
     border-radius: 1px;
     background: rgba(255, 255, 255, 0.05);
     transition: transform 0.2s;
     cursor: pointer;
     position: relative;
-    /* display: flex 제거 - 테이블 레이아웃 파괴 원인 */
     text-align: center;
     vertical-align: middle;
-    font-size: 8px;
-    line-height: 13px; /* 높이와 맞춰 중앙 정렬 효과 */
-    padding: 0 !important; /* 모바일 전역 스타일 오버라이드 방지 */
-    display: table-cell !important; /* 테이블 셀 유지 강제 */
+    font-size: 7px; /* 폰트 약간 축소 */
+    line-height: 11px; /* 높이와 일치 */
+    padding: 0 !important;
+    display: table-cell !important;
 }
 
 .hm-cell.hm-empty {
