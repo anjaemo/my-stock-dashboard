@@ -669,9 +669,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // 초기화 로직 실행
     initDashboard();
 
-    // 모바일 기기 감지 시 카드 뷰를 기본으로 설정
+    // 모바일 기기 감지 시 카드 뷰를 기본으로 설정 (사용자 요청에 따라 테이블 뷰로 변경)
     if (window.innerWidth < 768) {
-        switchHoldingsView('cards');
+        switchHoldingsView('table');
     }
 
     // 페이지 로드 시 구글 시트 데이터 갱신 요청 (Non-blocking)
@@ -1809,10 +1809,6 @@ function renderHoldingsTable() {
 
 // ===== Holdings Cards View =====
 
-// Store for mini sparkline chart instances (prevent duplicate canvas issues)
-const sparklineCharts = {};
-let intradayChart = null;
-
 // Current sort key for holdings cards (default: weight descending)
 let currentHoldingsSort = 'weight';
 
@@ -1908,10 +1904,6 @@ function renderHoldingsCards() {
                 <div class="card-change ${posClass}">${changeSign}${escapeHtml(item.display.dailyChange)}%</div>
             </div>
 
-            <div class="card-sparkline">
-                <canvas id="${sparkId}"></canvas>
-            </div>
-
             <div class="card-bottom">
                 <div class="card-bottom-row">
                     <span class="label">Shares</span>
@@ -1927,69 +1919,9 @@ function renderHoldingsCards() {
         card.addEventListener('click', () => openStockModal(item));
         card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') openStockModal(item); });
         grid.appendChild(card);
-
-        // Draw mini sparkline after appending
-        requestAnimationFrame(() => drawSparkline(sparkId, item, isPositive));
     });
 }
 
-
-function drawSparkline(canvasId, item, isPositive) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-
-    // Generate a representative sparkline based on returnRate and dailyChange
-    const points = generateSparklineData(item.returnRate, item.dailyChange, 20);
-    const color = isPositive ? '#4ade80' : '#fb7185';
-
-    if (sparklineCharts[canvasId]) {
-        try { sparklineCharts[canvasId].destroy(); } catch (e) { logger.warn("Resource cleanup/fetch error:", e); }
-    }
-
-    const gradient = ctx.createLinearGradient(0, 0, 0, 40);
-    gradient.addColorStop(0, isPositive ? 'rgba(74,222,128,0.25)' : 'rgba(251,113,133,0.25)');
-    gradient.addColorStop(1, 'rgba(0,0,0,0)');
-
-    sparklineCharts[canvasId] = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: Array(points.length).fill(''),
-            datasets: [{
-                data: points,
-                borderColor: color,
-                borderWidth: 1.5,
-                fill: true,
-                backgroundColor: gradient,
-                tension: 0.4,
-                pointRadius: 0
-            }]
-        },
-        options: {
-            responsive: false,
-            maintainAspectRatio: false,
-            animation: { duration: 600 },
-            scales: {
-                x: { display: false },
-                y: { display: false }
-            },
-            plugins: { legend: { display: false }, tooltip: { enabled: false } }
-        }
-    });
-}
-
-function generateSparklineData(returnRate, dailyChange, count = 20) {
-    const points = [];
-    let val = 100;
-    // Simulate a rough path ending at today's change direction
-    for (let i = 0; i < count; i++) {
-        const noise = (Math.random() - 0.48) * 1.2;
-        const trend = dailyChange / count;
-        val += trend + noise;
-        points.push(val);
-    }
-    return points;
-}
 
 // ===== View Toggle =====
 function switchHoldingsView(view) {
@@ -2008,12 +1940,6 @@ function switchHoldingsView(view) {
         tableView.style.display = 'block';
         cardsBtn.classList.remove('active');
         tableBtn.classList.add('active');
-
-        // 카드 뷰 비활성화 시 스파크라인 Chart.js 인스턴스 정리 (메모리 누수 방지)
-        Object.keys(sparklineCharts).forEach(id => {
-            try { sparklineCharts[id].destroy(); } catch (e) { /* ignore */ }
-            delete sparklineCharts[id];
-        });
     }
 }
 
