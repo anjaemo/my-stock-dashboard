@@ -173,6 +173,7 @@ let historyChart = null;
 let bubbleChart = null;
 let mddChart = null;
 let recoveryChart = null;
+let intradayChart = null;
 
 /**
  * 개인정보 마스킹 처리 함수
@@ -1725,18 +1726,6 @@ function processHoldingsData(data) {
         return;
     }
     
-    // 🔍 디버깅: 데이터 구조 확인을 위한 로그 (필요 시 개발자 도구 콘솔에서 확인 가능)
-    if (data.length > 15) {
-        console.log("--- Holdings Raw Data Debug ---");
-        const sampleRow = data[11]; // T_NASDAQ(ETF) 행 예상
-        console.log("Sample Row [11]:", sampleRow);
-        sampleRow.forEach((val, idx) => console.log(`Index ${idx}: ${val}`));
-        console.log("Current HOLDINGS_COL.WEIGHT:", HOLDINGS_COL.WEIGHT);
-        console.log("Value at Index 9:", sampleRow[9]);
-        console.log("Value at Index 12:", sampleRow[12]);
-        console.log("-------------------------------");
-    }
-
     logger.log(`보유 종목 데이터 처리 시작: ${data.length}행 발견`);
     globalHoldings = [];
 
@@ -1770,7 +1759,9 @@ function processHoldingsData(data) {
 
         const weight = parseSafeFloat(row[HOLDINGS_COL.WEIGHT]);
         const evalKRW = parseSafeFloat(row[HOLDINGS_COL.EVAL_KRW]);
-        if (weight === 0 && evalKRW === 0) return;
+        
+        // 데이터 로드 중인 행이거나 유효하지 않은 데이터 건너뛰기
+        if ((weight === 0 && evalKRW === 0) || String(row[HOLDINGS_COL.WEIGHT]).includes('로드')) return;
 
         const rawTicker = row[HOLDINGS_COL.TICKER] || '';
         const ticker = rawTicker.includes(':') ? rawTicker.split(':').pop() : rawTicker;
