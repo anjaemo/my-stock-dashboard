@@ -68,17 +68,17 @@ function isKoreanStock(ticker) {
  * 구글 시트 Holdings 컬럼 인덱스 매핑
  */
 const HOLDINGS_COL = {
-    NAME: 0,           // 1열
-    TICKER: 1,         // (데이터 어긋남 가능성 있음)
-    SHARES: 1,         // 4열 -> index 1
-    COST_BASIS: 2,     // 5열 -> index 2
-    AVG_COST: 2,       // 5열 -> index 2
-    CURRENT_PRICE: 3,  // 6열 -> index 3
-    RETURN_RATE: 5,    // 8열 -> index 5
-    EVAL_KRW: 6,       // 9열 -> index 6
-    WEIGHT: 7,         // 10열 -> index 7
-    DAILY_CHANGE: 8,   // 11열 -> index 8
-    PROFIT: 12         // 15열 -> index 12
+    NAME: 0,
+    TICKER: 1,
+    SHARES: 3,
+    COST_BASIS: 4,
+    AVG_COST: 5,
+    CURRENT_PRICE: 6,
+    RETURN_RATE: 7,
+    EVAL_KRW: 8,
+    WEIGHT: 9,
+    DAILY_CHANGE: 10,
+    PROFIT: 14
 };
 
 /**
@@ -1735,10 +1735,11 @@ function processHoldingsData(data) {
 
     const addedStocks = new Set();
     data.forEach((row, i) => {
-        if (i === 0 || !row[HOLDINGS_COL.NAME] || ["종목명", "환율"].includes(row[HOLDINGS_COL.NAME])) return;
+        const nameValue = row[HOLDINGS_COL.NAME] || '';
+        // 헤더 및 메타데이터 행 건너뛰기
+        if (i === 0 || !nameValue || ["종목명", "환율", "Ticker", "화폐단위"].includes(nameValue) || nameValue.startsWith('(')) return;
 
         // 한국 주식 여부 (6자리 숫자 티커 또는 특정 종목명)
-        const nameValue = row[HOLDINGS_COL.NAME] || '';
         const tickerValue = row[HOLDINGS_COL.TICKER] || '';
         const isKRW = isKoreanStock(tickerValue) || nameValue.toLowerCase().includes('plus50');
         const currency = isKRW ? 'KRW' : 'USD';
