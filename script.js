@@ -72,13 +72,13 @@ const HOLDINGS_COL = {
     TICKER: 1,
     SHARES: 3,
     COST_BASIS: 4,
-    AVG_COST: 5,
-    CURRENT_PRICE: 6,
-    RETURN_RATE: 7,
-    EVAL_KRW: 8,
-    WEIGHT: 9,
-    DAILY_CHANGE: 10,
-    PROFIT: 14
+    AVG_COST: 7,
+    CURRENT_PRICE: 8,
+    RETURN_RATE: 9,
+    EVAL_KRW: 10,
+    WEIGHT: 11,
+    DAILY_CHANGE: 12,
+    PROFIT: 16
 };
 
 /**
