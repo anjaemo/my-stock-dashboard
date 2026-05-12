@@ -1764,13 +1764,47 @@ function sortHoldings(column, toggle = true) {
         if (sortState.column === column) sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
         else { sortState.column = column; sortState.direction = 'desc'; }
     }
-    globalHoldings.sort((a, b) => sortState.direction === 'asc' ? a[column] - b[column] : b[column] - a[column]);
+    
+    globalHoldings.sort((a, b) => {
+        let valA = a[column];
+        let valB = b[column];
+
+        // 문자열 정렬 (종목명 등)
+        if (typeof valA === 'string' && typeof valB === 'string') {
+            return sortState.direction === 'asc' 
+                ? valA.localeCompare(valB, 'ko') 
+                : valB.localeCompare(valA, 'ko');
+        }
+
+        // 숫자 정렬 (비중, 수익률 등)
+        return sortState.direction === 'asc' ? valA - valB : valB - valA;
+    });
+    
     renderHoldingsTable();
 }
 
 function renderHoldingsTable() {
-    const tbody = document.querySelector('#holdings-table tbody');
-    if (!tbody) return; tbody.innerHTML = '';
+    const table = document.getElementById('holdings-table');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const thead = table.querySelector('thead');
+    if (!tbody) return; 
+    tbody.innerHTML = '';
+
+    // 헤더 아이콘 업데이트
+    if (thead) {
+        const headers = thead.querySelectorAll('th');
+        const headerMap = { name: 0, weight: 1, returnRate: 2, profit: 3, eval: 4, dailyChange: 5 };
+        headers.forEach((th, idx) => {
+            let text = th.textContent.replace(/[▲▼↕]/g, '');
+            if (idx === headerMap[sortState.column]) {
+                th.textContent = text + (sortState.direction === 'asc' ? '▲' : '▼');
+            } else {
+                th.textContent = text + '↕';
+            }
+        });
+    }
+
     globalHoldings.forEach(item => {
         const tr = document.createElement('tr');
         tr.style.cursor = 'pointer';

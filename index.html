@@ -173,12 +173,12 @@
                             <table id="holdings-table">
                                 <thead>
                                     <tr>
-                                        <th scope="col">종목명</th>
-                                        <th scope="col">비중</th>
-                                        <th scope="col">수익률</th>
-                                        <th scope="col">수익액</th>
-                                        <th scope="col">평가금</th>
-                                        <th scope="col">일일변동</th>
+                                        <th scope="col" onclick="sortHoldings('name')" style="cursor:pointer">종목명↕</th>
+                                        <th scope="col" onclick="sortHoldings('weight')" style="cursor:pointer">비중↕</th>
+                                        <th scope="col" onclick="sortHoldings('returnRate')" style="cursor:pointer">수익률↕</th>
+                                        <th scope="col" onclick="sortHoldings('profit')" style="cursor:pointer">수익액↕</th>
+                                        <th scope="col" onclick="sortHoldings('eval')" style="cursor:pointer">평가금↕</th>
+                                        <th scope="col" onclick="sortHoldings('dailyChange')" style="cursor:pointer">일일변동↕</th>
                                     </tr>
                                 </thead>
                                 <tbody></tbody>
