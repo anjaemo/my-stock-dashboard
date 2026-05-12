@@ -1724,6 +1724,19 @@ function processHoldingsData(data) {
         logger.warn("Invalid holdings data format:", data);
         return;
     }
+    
+    // 🔍 디버깅: 데이터 구조 확인을 위한 로그 (필요 시 개발자 도구 콘솔에서 확인 가능)
+    if (data.length > 15) {
+        console.log("--- Holdings Raw Data Debug ---");
+        const sampleRow = data[11]; // T_NASDAQ(ETF) 행 예상
+        console.log("Sample Row [11]:", sampleRow);
+        sampleRow.forEach((val, idx) => console.log(`Index ${idx}: ${val}`));
+        console.log("Current HOLDINGS_COL.WEIGHT:", HOLDINGS_COL.WEIGHT);
+        console.log("Value at Index 9:", sampleRow[9]);
+        console.log("Value at Index 12:", sampleRow[12]);
+        console.log("-------------------------------");
+    }
+
     logger.log(`보유 종목 데이터 처리 시작: ${data.length}행 발견`);
     globalHoldings = [];
 
