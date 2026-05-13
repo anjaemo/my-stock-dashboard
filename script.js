@@ -1249,7 +1249,8 @@ async function fetchWithFallback(targetUrl, isYahoo = false) {
     // 2. 공용 프록시 시도
     const publicProxies = [
         `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
-        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
+        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+        `https://api.codetabs.com/v1/proxy?url=${encodeURIComponent(targetUrl)}`
     ];
     publicProxies.forEach(proxy => {
         tasks.push(fetchTask(proxy));

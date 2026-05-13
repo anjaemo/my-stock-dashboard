@@ -32,7 +32,6 @@ function doPost(e) {
 
     // 💡 1. [프록시/명령 처리] 계좌 기록보다 먼저 확인
     if (data.command === "proxy_yahoo" && data.url) {
-      Utilities.sleep(1000);
       return ContentService.createTextOutput(UrlFetchApp.fetch(data.url).getContentText());
     }
 
