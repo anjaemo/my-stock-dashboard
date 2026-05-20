@@ -311,6 +311,151 @@ function openTab(evt, tabName) {
         fetchHoldingsAnalysisData();
     } else if (tabName === 'heatmap-tab') {
         renderHeatmap();
+    } else if (tabName === 'dividend-tab') {
+        renderDividendCalendar();
+    }
+    }
+
+    // 🎁 배당 달력 관련 변수 및 함수
+    let currentDividendMonth = new Date(); // 현재 표시 중인 달
+
+    /**
+    * 배당 달력 월 변경
+    */
+    function changeDividendMonth(offset) {
+    currentDividendMonth.setMonth(currentDividendMonth.getMonth() + offset);
+    renderDividendCalendar();
+    }
+
+    /**
+    * 배당 달력 렌더링
+    */
+    function renderDividendCalendar() {
+    const grid = document.getElementById('calendar-grid');
+    const monthLabel = document.getElementById('current-calendar-month');
+    if (!grid || !monthLabel) return;
+
+    grid.innerHTML = '';
+
+    const year = currentDividendMonth.getFullYear();
+    const month = currentDividendMonth.getMonth();
+
+    monthLabel.textContent = `${year}년 ${month + 1}월`;
+
+    // 달력 시작일 계산 (해당 월의 1일이 포함된 주의 일요일)
+    const firstDay = new Date(year, month, 1);
+    const startDay = new Date(firstDay);
+    startDay.setDate(1 - firstDay.getDay());
+
+    // 6주(42일) 표시
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    const monthlyDividends = getMonthlyDividendData(year, month);
+
+    for (let i = 0; i < 42; i++) {
+        const current = new Date(startDay);
+        current.setDate(startDay.getDate() + i);
+
+        const dayDiv = document.createElement('div');
+        dayDiv.className = 'calendar-day';
+        if (current.getMonth() !== month) dayDiv.classList.add('other-month');
+        if (current.getTime() === today.getTime()) dayDiv.classList.add('today');
+        if (current.getDay() === 0) dayDiv.classList.add('sun');
+        if (current.getDay() === 6) dayDiv.classList.add('sat');
+
+        const dateStr = formatLocalDate(current);
+        const dayDividends = monthlyDividends.filter(d => d.date === dateStr);
+
+        dayDiv.innerHTML = `<span class="day-number">${current.getDate()}</span>`;
+
+        if (dayDividends.length > 0) {
+            const itemContainer = document.createElement('div');
+            itemContainer.className = 'dividend-items';
+            dayDividends.forEach(d => {
+                const item = document.createElement('div');
+                item.className = 'dividend-item';
+                item.textContent = d.name;
+                item.title = `${d.name}: ${d.total.toLocaleString()}원`;
+                itemContainer.appendChild(item);
+            });
+            dayDiv.appendChild(itemContainer);
+            dayDiv.onclick = () => showDividendDetail(dateStr, dayDividends);
+        }
+
+        grid.appendChild(dayDiv);
+    }
+
+    updateDividendDetailTable(monthlyDividends);
+    }
+
+    /**
+    * 특정 월의 배당 데이터를 가져옴 (History 데이터 기반)
+    */
+    function getMonthlyDividendData(year, month) {
+    const data = [];
+    if (rawHistoryData && rawHistoryData.length > 1) {
+        const history = rawHistoryData.slice(1);
+        history.forEach(row => {
+            const dateStr = row[HISTORY_COL.DATE];
+            const divAmount = parseSafeFloat(row[HISTORY_COL.DIVIDEND]);
+
+            if (divAmount > 0) {
+                let stdDateStr = dateStr;
+                if (/^\d{2}\.\s*\d{2}\.\s*\d{2}$/.test(dateStr)) {
+                    stdDateStr = '20' + dateStr.replace(/\.\s*/g, '-');
+                }
+                const d = new Date(stdDateStr);
+                if (d.getFullYear() === year && d.getMonth() === month) {
+                    data.push({
+                        date: formatLocalDate(d),
+                        name: '배당금 입금',
+                        qty: '-',
+                        perShare: '-',
+                        total: divAmount
+                    });
+                }
+            }
+        });
+    }
+    return data;
+    }
+
+    function formatLocalDate(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+    }
+
+    function updateDividendDetailTable(records) {
+    const tbody = document.getElementById('dividend-detail-body');
+    const label = document.getElementById('selected-date-label');
+    if (!tbody) return;
+    if (label) label.textContent = '(전체 월 내역)';
+    tbody.innerHTML = '';
+    if (records.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-msg" style="text-align: center; padding: 2rem; color: var(--text-muted);">해당 월의 배당 내역이 없습니다.</td></tr>';
+        return;
+    }
+    records.sort((a,b) => a.date.localeCompare(b.date)).forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${r.date}</td><td>${r.name}</td><td>${r.qty}</td><td>${r.perShare}</td><td style="font-weight:bold; color:#4ade80;">${r.total.toLocaleString()}원</td>`;
+        tbody.appendChild(tr);
+    });
+    }
+
+    function showDividendDetail(date, records) {
+    const tbody = document.getElementById('dividend-detail-body');
+    const label = document.getElementById('selected-date-label');
+    if (!tbody) return;
+    if (label) label.textContent = `(${date})`;
+    tbody.innerHTML = '';
+    records.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${r.date}</td><td>${r.name}</td><td>${r.qty}</td><td>${r.perShare}</td><td style="font-weight:bold; color:#4ade80;">${r.total.toLocaleString()}원</td>`;
+        tbody.appendChild(tr);
+    });
     }
 
     window.dispatchEvent(new Event('resize'));

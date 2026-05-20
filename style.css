@@ -1789,3 +1789,71 @@ body.force-pc .container {
     margin-bottom: 5px;
     pointer-events: none;
 }
+
+/* Dividend Calendar Styles */
+.calendar-grid {
+    background-color: var(--border-color);
+}
+
+.calendar-day {
+    background-color: var(--card-bg);
+    min-height: 80px;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    transition: background-color 0.2s;
+    cursor: pointer;
+}
+
+.calendar-day:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.calendar-day.other-month {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.calendar-day.today {
+    background-color: rgba(56, 189, 248, 0.1);
+    box-shadow: inset 0 0 0 1px var(--accent-color);
+}
+
+.day-number {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.calendar-day.sun .day-number { color: #ff6b6b; }
+.calendar-day.sat .day-number { color: #4dabf7; }
+
+.dividend-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.dividend-item {
+    font-size: 0.7rem;
+    padding: 2px 4px;
+    border-radius: 3px;
+    background: rgba(56, 189, 248, 0.2);
+    color: #38bdf8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-left: 2px solid #38bdf8;
+}
+
+@media (max-width: 768px) {
+    .calendar-day {
+        min-height: 60px;
+        padding: 0.3rem;
+    }
+    .dividend-item {
+        font-size: 0.6rem;
+        padding: 1px 2px;
+    }
+}
