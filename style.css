@@ -702,7 +702,7 @@ body.force-pc .container {
     }
 
     body:not(.force-pc) .slide {
-        height: 300px !important;
+        height: 360px !important;
     }
 
     body:not(.force-pc) .holdings-header {

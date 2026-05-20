@@ -2287,9 +2287,15 @@ function renderHistoryChartWithRange() {
             },
             plugins: {
                 legend: { 
-                    display: window.innerWidth > 768 || document.body.classList.contains('force-pc'),
-                    position: 'top',
-                    labels: { color: '#94a3b8', boxWidth: 12 }
+                    display: true,
+                    position: 'bottom',
+                    labels: { 
+                        color: '#94a3b8', 
+                        boxWidth: window.innerWidth <= 768 ? 8 : 12,
+                        font: {
+                            size: window.innerWidth <= 768 ? 10 : 12
+                        }
+                    }
                 },
                 tooltip: {
                     callbacks: {
