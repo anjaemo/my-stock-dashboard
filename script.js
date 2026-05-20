@@ -1394,11 +1394,13 @@ async function fetchWithFallback(targetUrl, isYahoo = false) {
         }));
     }
 
-    // 2. 공용 프록시 시도
+    // 2. 공용 프록시 시도 (인코딩된 URL 사용)
+    const encodedTarget = encodeURIComponent(targetUrl);
     const publicProxies = [
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
-        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
-        `https://api.codetabs.com/v1/proxy?url=${encodeURIComponent(targetUrl)}`
+        `https://api.allorigins.win/raw?url=${encodedTarget}`,
+        `https://corsproxy.io/?url=${encodedTarget}`,
+        `https://thingproxy.freeboard.io/fetch/${targetUrl}`, // URL 인코딩 안함 (직접 경로)
+        `https://api.codetabs.com/v1/proxy?url=${encodedTarget}`
     ];
     publicProxies.forEach(proxy => {
         tasks.push(fetchTask(proxy));
@@ -1707,9 +1709,8 @@ async function updateMarketCharts() {
             const valEl = document.getElementById(`card-${m.id}-val`);
             const chgEl = document.getElementById(`card-${m.id}-change`);
             
-            const encodedTicker = encodeURIComponent(m.ticker);
-            // 캐시 방지를 위해 타임스탬프 추가 및 range를 1d로 설정하여 최신 데이터 요청
-            const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodedTicker}?interval=1d&range=1d&_=${Date.now()}`;
+            // 티커 중복 인코딩 방지: fetchWithFallback에서 전체 URL을 인코딩하므로 여기서는 원본 유지
+            const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${m.ticker}?interval=1d&range=1d&_=${Date.now()}`;
             
             const result = await fetchWithFallback(targetUrl, true);
 
