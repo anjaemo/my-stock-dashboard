@@ -312,25 +312,84 @@ function openTab(evt, tabName) {
     } else if (tabName === 'heatmap-tab') {
         renderHeatmap();
     } else if (tabName === 'dividend-tab') {
+        syncDividendDataAndRender();
+    }
+    }
+
+    // 🎁 배당 달력 관련 변수 및 함수
+    let currentDividendMonth = new Date(); // 현재 표시 중인 달
+    let dividendCache = []; // { ticker, date, amount, name, qty }
+
+    /**
+    * 보유 종목을 기반으로 야후 파이낸스에서 배당 데이터를 가져와 동기화
+    */
+    async function syncDividendDataAndRender() {
+    const statusEl = document.getElementById('selected-date-label');
+    if (statusEl) statusEl.textContent = ' (배당 데이터 동기화 중...)';
+
+    if (!globalHoldings || globalHoldings.length === 0) {
+        renderDividendCalendar();
+        return;
+    }
+
+    // 이미 데이터를 가져왔다면 바로 렌더링 (캐시 활용)
+    if (dividendCache.length > 0) {
+        renderDividendCalendar();
+        if (statusEl) statusEl.textContent = ' (동기화 완료)';
+        return;
+    }
+
+    try {
+        const results = [];
+        // 모든 보유 종목에 대해 배당 데이터 요청 (병렬 처리)
+        // 10년치 데이터를 가져와서 모든 과거/미래 배당 확인
+        await Promise.all(globalHoldings.map(async (h) => {
+            if (!h.ticker) return;
+
+            // 인덱스나 환율 티커 제외
+            if (h.ticker.includes('=') || h.ticker.startsWith('^')) return;
+
+            const url = `https://query1.finance.yahoo.com/v8/finance/chart/${h.ticker}?interval=1d&range=10y&events=div`;
+            const result = await fetchWithFallback(url, true);
+
+            if (result && result.type === 'json' && result.data.chart?.result?.[0]?.events?.dividends) {
+                const divs = result.data.chart.result[0].events.dividends;
+                Object.values(divs).forEach(div => {
+                    const d = new Date(div.date * 1000);
+                    results.push({
+                        date: formatLocalDate(d),
+                        name: h.name,
+                        ticker: h.ticker,
+                        qty: h.shares,
+                        perShare: div.amount,
+                        total: (parseSafeFloat(h.shares) * div.amount)
+                    });
+                });
+            }
+        }));
+
+        dividendCache = results;
+        renderDividendCalendar();
+        if (statusEl) statusEl.textContent = ' (동기화 완료)';
+    } catch (e) {
+        logger.error("배당 데이터 동기화 실패:", e);
+        if (statusEl) statusEl.textContent = ' (동기화 실패)';
         renderDividendCalendar();
     }
-}
+    }
 
-// 🎁 배당 달력 관련 변수 및 함수
-let currentDividendMonth = new Date(); // 현재 표시 중인 달
-
-/**
- * 배당 달력 월 변경
- */
-function changeDividendMonth(offset) {
+    /**
+    * 배당 달력 월 변경
+    */
+    function changeDividendMonth(offset) {
     currentDividendMonth.setMonth(currentDividendMonth.getMonth() + offset);
     renderDividendCalendar();
-}
+    }
 
-/**
- * 배당 달력 렌더링
- */
-function renderDividendCalendar() {
+    /**
+    * 배당 달력 렌더링
+    */
+    function renderDividendCalendar() {
     const grid = document.getElementById('calendar-grid');
     const monthLabel = document.getElementById('current-calendar-month');
     if (!grid || !monthLabel) return;
@@ -387,40 +446,17 @@ function renderDividendCalendar() {
     }
 
     updateDividendDetailTable(monthlyDividends);
-}
-
-/**
- * 특정 월의 배당 데이터를 가져옴 (History 데이터 기반)
- */
-function getMonthlyDividendData(year, month) {
-    const data = [];
-    if (rawHistoryData && rawHistoryData.length > 1) {
-        const history = rawHistoryData.slice(1);
-        history.forEach(row => {
-            const dateStr = row[HISTORY_COL.DATE];
-            const divAmount = parseSafeFloat(row[HISTORY_COL.DIVIDEND]);
-
-            if (divAmount > 0) {
-                let stdDateStr = dateStr;
-                if (/^\d{2}\.\s*\d{2}\.\s*\d{2}$/.test(dateStr)) {
-                    stdDateStr = '20' + dateStr.replace(/\.\s*/g, '-');
-                }
-                const d = new Date(stdDateStr);
-                if (d.getFullYear() === year && d.getMonth() === month) {
-                    data.push({
-                        date: formatLocalDate(d),
-                        name: '배당금 입금',
-                        qty: '-',
-                        perShare: '-',
-                        total: divAmount
-                    });
-                }
-            }
-        });
     }
-    return data;
-}
 
+    /**
+    * 특정 월의 배당 데이터를 가져옴 (dividendCache 기반)
+    */
+    function getMonthlyDividendData(year, month) {
+    return dividendCache.filter(d => {
+        const date = new Date(d.date);
+        return date.getFullYear() === year && date.getMonth() === month;
+    });
+    }
 function formatLocalDate(date) {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
