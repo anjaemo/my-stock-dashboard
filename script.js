@@ -364,7 +364,11 @@ function openTab(evt, tabName) {
                     if (result && result.type === 'json' && result.data.chart?.result?.[0]?.events?.dividends) {
                         const divs = result.data.chart.result[0].events.dividends;
                         Object.values(divs).forEach(div => {
+                            // 야후 API 타임스탬프는 간혹 미국 시장 마감/자정 기준으로 들어와 한국 시간 변환 시 하루 밀리는 현상 발생
+                            // 이를 방지하기 위해 날짜 계산 시 중앙값을 확보하거나 UTC 기준으로 처리
                             const d = new Date(div.date * 1000);
+                            d.setHours(d.getHours() + 12); // 하루 밀림 방지를 위해 12시간 더함
+
                             const shares = parseSafeFloat(h.shares);
                             let totalKRW = shares * div.amount;
                             if (h.currency === 'USD') {
@@ -382,7 +386,6 @@ function openTab(evt, tabName) {
                             });
                         });
                     }
-
                     // 프록시 서버 매너를 위한 짧은 휴식 (300ms)
                     if (processedCount < totalCount) await sleep(300);
 
