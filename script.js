@@ -320,80 +320,86 @@ function openTab(evt, tabName) {
     let currentDividendMonth = new Date(); // 현재 표시 중인 달
     let dividendCache = []; // { ticker, date, amount, name, qty }
 
+    // 헬퍼 함수: 지정된 시간(ms)만큼 대기
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
     /**
-    * 보유 종목을 기반으로 야후 파이낸스에서 배당 데이터를 가져와 동기화
-    */
+     * 보유 종목을 기반으로 야후 파이낸스에서 배당 데이터를 가져와 동기화
+     */
     async function syncDividendDataAndRender() {
-    const statusEl = document.getElementById('selected-date-label');
-    if (statusEl) statusEl.textContent = ' (배당 데이터 동기화 중...)';
+        const statusEl = document.getElementById('selected-date-label');
+        if (statusEl) statusEl.textContent = ' (배당 데이터 동기화 중...)';
 
-    if (!globalHoldings || globalHoldings.length === 0) {
-        renderDividendCalendar();
-        return;
-    }
-
-    // 이미 데이터를 가져왔다면 바로 렌더링 (캐시 활용)
-    if (dividendCache.length > 0) {
-        renderDividendCalendar();
-        if (statusEl) statusEl.textContent = ' (동기화 완료)';
-        return;
-    }
-
-    try {
-        const results = [];
-        const holdings = globalHoldings.filter(h => h.ticker && !h.ticker.includes('=') && !h.ticker.startsWith('^'));
-        
-        let processedCount = 0;
-        const totalCount = holdings.length;
-
-        // 순차적으로 처리하여 프록시 과부하 및 레이트 리밋 방지
-        for (const h of holdings) {
-            processedCount++;
-            if (statusEl) statusEl.textContent = ` (데이터 동기화 중... ${processedCount}/${totalCount})`;
-
-            const cleanTicker = h.ticker.trim();
-            const formattedTicker = formatTicker(cleanTicker);
-            const url = `https://query1.finance.yahoo.com/v8/finance/chart/${formattedTicker}?interval=1d&range=10y&events=div`;
-            
-            try {
-                const result = await fetchWithFallback(url, true);
-                
-                if (result && result.type === 'json' && result.data.chart?.result?.[0]?.events?.dividends) {
-                    const divs = result.data.chart.result[0].events.dividends;
-                    Object.values(divs).forEach(div => {
-                        const d = new Date(div.date * 1000);
-                        const shares = parseSafeFloat(h.shares);
-                        let totalKRW = shares * div.amount;
-                        if (h.currency === 'USD') {
-                            totalKRW = totalKRW * usdKrwRate;
-                        }
-
-                        results.push({
-                            date: formatLocalDate(d),
-                            name: h.name,
-                            ticker: cleanTicker,
-                            currency: h.currency,
-                            qty: h.shares,
-                            perShare: div.amount,
-                            total: totalKRW
-                        });
-                    });
-                }
-            } catch (innerE) {
-                logger.warn(`${cleanTicker} 배당 데이터 로드 실패:`, innerE);
-            }
+        if (!globalHoldings || globalHoldings.length === 0) {
+            renderDividendCalendar();
+            return;
         }
 
-        dividendCache = results;
-        renderDividendCalendar();
-        if (statusEl) statusEl.textContent = ' (동기화 완료)';
-    } catch (e) {
-        logger.error("배당 데이터 동기화 실패:", e);
-        if (statusEl) statusEl.textContent = ' (동기화 실패)';
-        renderDividendCalendar();
-    }
-    }
+        // 이미 데이터를 가져왔다면 바로 렌더링 (캐시 활용)
+        if (dividendCache.length > 0) {
+            renderDividendCalendar();
+            if (statusEl) statusEl.textContent = ' (동기화 완료)';
+            return;
+        }
 
+        try {
+            const results = [];
+            const holdings = globalHoldings.filter(h => h.ticker && !h.ticker.includes('=') && !h.ticker.startsWith('^'));
+
+            let processedCount = 0;
+            const totalCount = holdings.length;
+
+            // 순차적으로 처리하여 프록시 과부하 및 레이트 리밋 방지
+            for (const h of holdings) {
+                processedCount++;
+                if (statusEl) statusEl.textContent = ` (데이터 동기화 중... ${processedCount}/${totalCount})`;
+
+                const cleanTicker = h.ticker.trim();
+                const formattedTicker = formatTicker(cleanTicker);
+                const url = `https://query1.finance.yahoo.com/v8/finance/chart/${formattedTicker}?interval=1d&range=5y&events=div`; // 5년치로 단축
+
+                try {
+                    const result = await fetchWithFallback(url, true);
+
+                    if (result && result.type === 'json' && result.data.chart?.result?.[0]?.events?.dividends) {
+                        const divs = result.data.chart.result[0].events.dividends;
+                        Object.values(divs).forEach(div => {
+                            const d = new Date(div.date * 1000);
+                            const shares = parseSafeFloat(h.shares);
+                            let totalKRW = shares * div.amount;
+                            if (h.currency === 'USD') {
+                                totalKRW = totalKRW * usdKrwRate;
+                            }
+
+                            results.push({
+                                date: formatLocalDate(d),
+                                name: h.name,
+                                ticker: cleanTicker,
+                                currency: h.currency,
+                                qty: h.shares,
+                                perShare: div.amount,
+                                total: totalKRW
+                            });
+                        });
+                    }
+
+                    // 프록시 서버 매너를 위한 짧은 휴식 (300ms)
+                    if (processedCount < totalCount) await sleep(300);
+
+                } catch (innerE) {
+                    logger.warn(`${cleanTicker} 배당 데이터 로드 실패:`, innerE);
+                }
+            }
+
+            dividendCache = results;
+            renderDividendCalendar();
+            if (statusEl) statusEl.textContent = ' (동기화 완료)';
+        } catch (e) {
+            logger.error("배당 데이터 동기화 실패:", e);
+            if (statusEl) statusEl.textContent = ' (동기화 실패)';
+            renderDividendCalendar();
+        }
+    }
     /**
     * 배당 달력 월 변경
     */
@@ -1422,7 +1428,7 @@ async function fetchWithFallback(targetUrl, isYahoo = false) {
     if (!targetUrl) return null;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 전체 타임아웃 10초
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 전체 타임아웃 15초로 연장
 
     const fetchTask = async (url, options = {}) => {
         const response = await fetch(url, { ...options, signal: controller.signal });
@@ -1464,8 +1470,9 @@ async function fetchWithFallback(targetUrl, isYahoo = false) {
     const encodedTarget = encodeURIComponent(targetUrl);
     const publicProxies = [
         `https://api.allorigins.win/raw?url=${encodedTarget}`,
-        `https://corsproxy.io/?url=${encodedTarget}`,
-        `https://api.codetabs.com/v1/proxy?url=${encodedTarget}`
+        `https://corsproxy.io/?${encodedTarget}`, // URL 파라미터 없이 직접 쿼리로 전달
+        `https://api.codetabs.com/v1/proxy?url=${encodedTarget}`,
+        `https://api.cors.lol/?url=${encodedTarget}`
     ];
     publicProxies.forEach(proxy => {
         tasks.push(fetchTask(proxy));
